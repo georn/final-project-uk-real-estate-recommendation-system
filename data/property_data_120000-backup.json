@@ -1,0 +1,48 @@
+[
+    {
+        "id": 1,
+        "property_url": "https://www.onthemarket.com/details/10825666/",
+        "title": "Studio for sale",
+        "address": "Silbury Boulevard, Milton Keynes",
+        "price": "\u00a3110,000",
+        "pricing_qualifier": "Offers in region of",
+        "listing_time": "OnTheMarket > 14 days",
+        "property_type": "Studio",
+        "bedrooms": "0 bed",
+        "bathrooms": "1bath",
+        "epc_rating": "EPC rating: C*",
+        "size": "355 sq ft / 33 sq m",
+        "features": [
+            "Tenure: Leasehold (91 years remaining)",
+            "CENTRAL MK LOCATION",
+            "CHAIN FREE",
+            "STUDIO",
+            "FIRST FLOOR",
+            "FTB OPPORTUNITY",
+            "INVESTORS ONLY"
+        ]
+    },
+    {
+        "id": 2,
+        "property_url": "https://www.onthemarket.com/details/11536553/",
+        "title": "1 bedroom maisonette for sale",
+        "address": "Slough,  Berkshire,  SL1",
+        "price": "\u00a3120,000",
+        "pricing_qualifier": "Offers over",
+        "listing_time": "OnTheMarket > 14 days",
+        "property_type": "Maisonette",
+        "bedrooms": "1 bed",
+        "bathrooms": "1bath",
+        "epc_rating": "EPC rating: D*",
+        "size": "383 sq ft / 36 sq m",
+        "features": [
+            "Tenure: Leasehold (65 years remaining)",
+            "Leasehold Term 99 years from 24/06/1990",
+            "One Bedroom Flat",
+            "Allocated Storage",
+            "Off Street Parking",
+            "Chain Free",
+            "Awaiting Vendor approval on details"
+        ]
+    }
+]
