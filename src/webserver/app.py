@@ -4,8 +4,13 @@ import numpy as np
 import os
 from tensorflow.keras.models import load_model
 import joblib
+import logging
 
 app = Flask(__name__)
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Load the model when the app starts
 model = load_model('../../models/property_recommendation_model.h5')
@@ -66,12 +71,17 @@ def preprocess_user_input(user_profile):
 def generate_recommendations(user_profile):
     global property_data
 
+    logger.info(f"Generating recommendations for user profile: {user_profile}")
+    logger.info(f"Property data columns: {property_data.columns.tolist()}")
+
     # Preprocess user input
     user_input = preprocess_user_input(user_profile)
 
     # Prepare property data
     property_features = ['price', 'size_sq_ft', 'has_garden', 'has_parking', 'location_Urban', 'location_Suburban', 'location_Rural']
     property_features.extend([col for col in property_data.columns if col.startswith('Property Type_')])
+
+    logger.info(f"Property features used: {property_features}")
 
     X_property = property_data[property_features]
     scaled_property_features = scaler_property.transform(X_property)
@@ -80,25 +90,41 @@ def generate_recommendations(user_profile):
     predictions = model.predict([scaled_property_features, np.repeat(user_input, len(property_data), axis=0)])
 
     # Apply filters based on user preferences
-    mask = (
-        (property_data['price'] <= user_profile['Income'] * 4 + user_profile['Savings']) &
-        (property_data[f"location_{user_profile['PreferredLocation']}"] == 1) &
-        (property_data[f"Property Type_{user_profile['DesiredPropertyType']}"] == 1)
-    )
+    mask = (property_data['price'] <= user_profile['Income'] * 4 + user_profile['Savings'])
+
+    # Check if location column exists before applying filter
+    location_column = f"location_{user_profile['PreferredLocation']}"
+    if location_column in property_data.columns:
+        mask &= (property_data[location_column] == 1)
+    else:
+        logger.warning(f"Location column '{location_column}' not found in property data")
+
+    # Check if property type column exists before applying filter
+    property_type_column = f"Property Type_{user_profile['DesiredPropertyType']}"
+    if property_type_column in property_data.columns:
+        mask &= (property_data[property_type_column] == 1)
+    else:
+        logger.warning(f"Property type column '{property_type_column}' not found in property data")
 
     # Apply must-have features filter
     for feature in user_profile['MustHaveFeatures']:
-        if feature.lower() == 'garden':
+        if feature.lower() == 'garden' and 'has_garden' in property_data.columns:
             mask &= (property_data['has_garden'] == 1)
-        elif feature.lower() == 'parking':
+        elif feature.lower() == 'parking' and 'has_parking' in property_data.columns:
             mask &= (property_data['has_parking'] == 1)
+        else:
+            logger.warning(f"Feature '{feature}' not found in property data")
 
     filtered_predictions = predictions[mask]
     filtered_properties = property_data[mask]
 
+    logger.info(f"Number of properties after filtering: {len(filtered_properties)}")
+
     # Get top 5 recommendations
     top_indices = np.argsort(filtered_predictions.flatten())[-5:][::-1]
     recommendations = filtered_properties.iloc[top_indices]
+
+    logger.info(f"Number of recommendations generated: {len(recommendations)}")
 
     # Convert to list of dictionaries for template rendering
     return recommendations.to_dict('records')
