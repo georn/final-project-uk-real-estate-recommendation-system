@@ -85,9 +85,6 @@ def load_and_preprocess_data(property_file_path, user_file_path, sample_size=Non
     pairs = create_property_user_pairs(property_df, user_df, pairs_per_user)
     logging.info(f"Pairs created. Shape: {pairs.shape}")
 
-    property_features = ['price', 'size_sq_ft', 'has_garden', 'has_parking', 'location_Urban', 'location_Suburban', 'location_Rural']
-    property_features.extend([col for col in pairs.columns if col.startswith('Property Type_')])
-    user_features = ['Income', 'Savings', 'MaxCommuteTime', 'FamilySize']
 
     # Ensure all required features are present
     all_features = property_features + user_features
