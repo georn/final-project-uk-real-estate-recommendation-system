@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Property Recommendations</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="container">
+    <h1>Recommended Properties</h1>
+    <ul class="recommendations-list">
+        {% for property in recommendations %}
+        <li class="recommendation-item">
+            <div class="property-info">
+                <span class="property-label">Location:</span> {{ property.Location }}<br>
+                <span class="property-label">Type:</span> {{ property.Type }}<br>
+                <span class="property-label">Price:</span> ${{ property.Price }}<br>
+                <span class="property-label">Features:</span> {{ property.Features }}
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+</div>
+</body>
+</html>
