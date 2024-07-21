@@ -31,6 +31,10 @@ def submit_user_profile():
     user_profile = {
         'Income': float(request.form['income']),
         'Savings': float(request.form['savings']),
+        'PreferredLocation': request.form['preferred_location'],
+        'DesiredPropertyType': request.form['property_type'],
+        'MustHaveFeatures': request.form.getlist('must_have_features'),
+        'NiceToHaveFeatures': request.form.getlist('nice_to_have_features'),
         'MaxCommuteTime': int(request.form['commute_time']),
         'FamilySize': int(request.form['family_size'])
     }
@@ -75,9 +79,26 @@ def generate_recommendations(user_profile):
     # Generate predictions
     predictions = model.predict([scaled_property_features, np.repeat(user_input, len(property_data), axis=0)])
 
+    # Apply filters based on user preferences
+    mask = (
+        (property_data['price'] <= user_profile['Income'] * 4 + user_profile['Savings']) &
+        (property_data[f"location_{user_profile['PreferredLocation']}"] == 1) &
+        (property_data[f"Property Type_{user_profile['DesiredPropertyType']}"] == 1)
+    )
+
+    # Apply must-have features filter
+    for feature in user_profile['MustHaveFeatures']:
+        if feature.lower() == 'garden':
+            mask &= (property_data['has_garden'] == 1)
+        elif feature.lower() == 'parking':
+            mask &= (property_data['has_parking'] == 1)
+
+    filtered_predictions = predictions[mask]
+    filtered_properties = property_data[mask]
+
     # Get top 5 recommendations
-    top_indices = np.argsort(predictions.flatten())[-5:][::-1]
-    recommendations = property_data.iloc[top_indices]
+    top_indices = np.argsort(filtered_predictions.flatten())[-5:][::-1]
+    recommendations = filtered_properties.iloc[top_indices]
 
     # Convert to list of dictionaries for template rendering
     return recommendations.to_dict('records')
