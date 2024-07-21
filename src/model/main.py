@@ -1,7 +1,9 @@
 from data_loader import load_data
 from model_builder import build_model
-from model_trainer import train_model, plot_training_history
+from model_trainer import train_model, plot_training_history, save_trained_model
 from model_evaluator import evaluate_model
+import joblib
+import os
 
 def main():
     # Load and preprocess data
@@ -21,6 +23,18 @@ def main():
 
     # Evaluate the model
     evaluate_model(model, [X_property_test, X_user_test], y_test)
+
+    # Save the trained model and scalers
+    models_dir = '../../models'
+    os.makedirs(models_dir, exist_ok=True)
+
+    model_save_path = os.path.join(models_dir, 'property_recommendation_model.h5')
+    save_trained_model(model, model_save_path)
+
+    # Save scalers
+    joblib.dump(scaler_property, os.path.join(models_dir, 'scaler_property.joblib'))
+    joblib.dump(scaler_user, os.path.join(models_dir, 'scaler_user.joblib'))
+    print("Model and scalers saved successfully.")
 
 if __name__ == "__main__":
     main()
