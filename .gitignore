@@ -7,3 +7,4 @@ __pycache__/
 ProgrammingWithDataMidterm-Dec2023.ipynb
 .env
 .aider*
+.ipynb_checkpoints/

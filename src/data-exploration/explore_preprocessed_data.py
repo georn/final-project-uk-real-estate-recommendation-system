@@ -28,6 +28,6 @@ def explore_preprocessed_data(file_path):
     pd.reset_option('display.max_rows')
 
 if __name__ == "__main__":
-    file_path = '../../data/preprocessed-data/preprocessed.csv'
-    # file_path = '../../data/ml-ready-data/ml_ready_data.csv'
+    # file_path = '../../data/preprocessed-data/preprocessed.csv'
+    file_path = '../../data/ml-ready-data/ml_ready_data.csv'
     explore_preprocessed_data(file_path)

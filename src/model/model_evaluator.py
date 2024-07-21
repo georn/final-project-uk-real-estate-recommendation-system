@@ -1,16 +1,15 @@
-from sklearn.metrics import mean_absolute_error, mean_squared_error
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 import numpy as np
 
-def evaluate_model(model, X_val, y_val, scaler_target):
-    # Predict on the validation set
-    predictions = model.predict(X_val)
+def evaluate_model(model, X_test, y_test):
+    # Make predictions
+    y_pred = model.predict(X_test)
+    y_pred_binary = (y_pred > 0.5).astype(int)
 
-    # Rescale the predictions and true values back to the original scale
-    y_val_rescaled = scaler_target.inverse_transform(y_val.reshape(-1, 1)).flatten()
-    predictions_rescaled = scaler_target.inverse_transform(predictions).flatten()
+    # Calculate metrics
+    accuracy = accuracy_score(y_test, y_pred_binary)
+    precision = precision_score(y_test, y_pred_binary)
+    recall = recall_score(y_test, y_pred_binary)
+    f1 = f1_score(y_test, y_pred_binary)
 
-    # Calculate evaluation metrics
-    mae = mean_absolute_error(y_val_rescaled, predictions_rescaled)
-    rmse = np.sqrt(mean_squared_error(y_val_rescaled, predictions_rescaled))
-
-    return mae, rmse
+    return accuracy, precision, recall, f1

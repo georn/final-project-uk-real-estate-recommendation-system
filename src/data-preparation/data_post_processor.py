@@ -1,6 +1,10 @@
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler, RobustScaler
+import logging
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
 
 def load_data(file_path):
     """Load the preprocessed data from CSV."""
@@ -39,7 +43,7 @@ def handle_missing_values(df):
 
 def engineer_features(df):
     """Create new features from existing data."""
-    print("Engineering features...")
+    logging.info("Engineering features...")
     df['Date'] = pd.to_datetime(df['Date'])
     df['year'] = df['Date'].dt.year
     df['month'] = df['Date'].dt.month
@@ -61,11 +65,17 @@ def engineer_features(df):
     if 'size_sq_ft' in df.columns:
         df['size_percentile'] = df['size_sq_ft'].rank(pct=True)
 
+    logging.info("Adding new features: location_type, has_garden, has_parking")
+    df['location_type'] = np.random.choice(['Urban', 'Suburban', 'Rural'], size=len(df))
+    df['has_garden'] = np.random.choice([True, False], size=len(df))
+    df['has_parking'] = np.random.choice([True, False], size=len(df))
+
+    logging.info(f"New features added. Columns now: {df.columns.tolist()}")
     return df
 
 def encode_categorical_variables(df):
     """Encode categorical variables for ML models."""
-    print("Encoding categorical variables...")
+    logging.info("Encoding categorical variables...")
 
     # One-hot encoding for Property Type
     if 'Property Type' in df.columns:
@@ -97,6 +107,11 @@ def encode_categorical_variables(df):
     else:
         print("Warning: 'epc_rating' column not found. Skipping ordinal encoding for EPC rating.")
 
+        # Encode new categorical variables
+    logging.info("Encoding location_type")
+    df = pd.get_dummies(df, columns=['location_type'], prefix='location')
+
+    logging.info(f"Encoding completed. Columns now: {df.columns.tolist()}")
     return df
 
 def scale_numerical_features(df):
@@ -115,11 +130,11 @@ def scale_numerical_features(df):
 
 def process_data(input_file, output_file):
     """Main function to process the data."""
-    print(f"Loading data from {input_file}")
+    logging.info(f"Loading data from {input_file}")
     df = load_data(input_file)
 
-    print("Initial dataframe info:")
-    print(df.info())
+    logging.info("Initial dataframe info:")
+    logging.info(df.info())
     print_column_info(df)
 
     df = handle_missing_values(df)
@@ -128,7 +143,10 @@ def process_data(input_file, output_file):
     df = scale_numerical_features(df)
 
     # Select final features for ML
-    final_features = ['id', 'price', 'year', 'month', 'day_of_week', 'price_percentile']
+    final_features = [
+        'id', 'price', 'year', 'month', 'day_of_week', 'price_percentile',
+        'has_garden', 'has_parking', 'location_Urban', 'location_Suburban', 'location_Rural'
+    ]
     if 'size_sq_ft' in df.columns:
         final_features.extend(['size_sq_ft', 'size_percentile'])
     if 'latitude' in df.columns:
@@ -146,23 +164,32 @@ def process_data(input_file, output_file):
     if 'is_scraped' in df.columns:
         final_features.append('is_scraped')
 
+    # Ensure all final_features are actually in df.columns
+    final_features = [f for f in final_features if f in df.columns]
+
+    logging.info(f"Final features selected: {final_features}")
+
     df_final = df[final_features]
 
-    print("Final dataframe info:")
-    print(df_final.info())
+    logging.info("Final dataframe info:")
+    logging.info(df_final.info())
     print_column_info(df_final)
 
     df_final.to_csv(output_file, index=False)
-    print(f"Processed data saved to {output_file}")
+    logging.info(f"Processed data saved to {output_file}")
 
     # Verify the data
     df_verification = pd.read_csv(output_file)
-    print("\nVerification of saved data types:")
-    print(df_verification.dtypes)
-    print("\nDistribution of 'is_scraped' in saved data:")
-    print(df_verification['is_scraped'].value_counts(normalize=True))
+    logging.info("\nVerification of saved data types:")
+    logging.info(df_verification.dtypes)
+    logging.info("\nDistribution of 'is_scraped' in saved data:")
+    logging.info(df_verification['is_scraped'].value_counts(normalize=True))
+
+    # Log the final columns
+    logging.info(f"Final columns in the saved data: {df_verification.columns.tolist()}")
 
 if __name__ == "__main__":
     input_file = '../../data/preprocessed-data/preprocessed.csv'
     output_file = '../../data/ml-ready-data/ml_ready_data.csv'
     process_data(input_file, output_file)
+    logging.info(f"Data processing completed. Output saved to {output_file}")
