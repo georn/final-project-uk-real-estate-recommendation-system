@@ -13,7 +13,6 @@
             <div class="property-info">
                 <span class="property-label">Price:</span> £{{ "{:,.0f}".format(property.price) }}<br>
                 <span class="property-label">Size:</span> {{ property.size_sq_ft }} sq ft<br>
-                <span class="property-label">Type:</span> {{ property.property_type }}<br>
                 <span class="property-label">Location:</span> 
                 {% if property.location_Urban %}Urban
                 {% elif property.location_Suburban %}Suburban
@@ -21,7 +20,13 @@
                 {% endif %}<br>
                 <span class="property-label">Features:</span>
                 {% if property.has_garden %}Garden, {% endif %}
-                {% if property.has_parking %}Parking{% endif %}
+                {% if property.has_parking %}Parking{% endif %}<br>
+                <span class="property-label">Property Type:</span>
+                {% for col in property.keys() %}
+                    {% if col.startswith('Property Type_') and property[col] %}
+                        {{ col.replace('Property Type_', '') }}
+                    {% endif %}
+                {% endfor %}
             </div>
         </li>
         {% endfor %}
