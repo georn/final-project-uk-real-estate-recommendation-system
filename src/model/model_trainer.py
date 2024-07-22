@@ -1,7 +1,9 @@
 from tensorflow.keras.callbacks import Callback, EarlyStopping
+from tensorflow.keras.models import save_model
 import matplotlib.pyplot as plt
 import numpy as np
 import logging
+import os
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -68,3 +70,11 @@ def plot_training_history(history):
     logging.info(f"Final validation loss: {history.history['val_loss'][-1]:.4f}")
     logging.info(f"Final training accuracy: {history.history['accuracy'][-1]:.4f}")
     logging.info(f"Final validation accuracy: {history.history['val_accuracy'][-1]:.4f}")
+
+def save_trained_model(model, save_path):
+    # Create directory if it doesn't exist
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+
+    # Save the model
+    save_model(model, save_path)
+    logging.info(f"Model saved to {save_path}")

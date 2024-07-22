@@ -11,10 +11,22 @@
         {% for property in recommendations %}
         <li class="recommendation-item">
             <div class="property-info">
-                <span class="property-label">Location:</span> {{ property.Location }}<br>
-                <span class="property-label">Type:</span> {{ property.Type }}<br>
-                <span class="property-label">Price:</span> ${{ property.Price }}<br>
-                <span class="property-label">Features:</span> {{ property.Features }}
+                <span class="property-label">Price:</span> £{{ "{:,.0f}".format(property.price) }}<br>
+                <span class="property-label">Size:</span> {{ property.size_sq_ft }} sq ft<br>
+                <span class="property-label">Location:</span> 
+                {% if property.location_Urban %}Urban
+                {% elif property.location_Suburban %}Suburban
+                {% elif property.location_Rural %}Rural
+                {% endif %}<br>
+                <span class="property-label">Features:</span>
+                {% if property.has_garden %}Garden, {% endif %}
+                {% if property.has_parking %}Parking{% endif %}<br>
+                <span class="property-label">Property Type:</span>
+                {% for col in property.keys() %}
+                    {% if col.startswith('Property Type_') and property[col] %}
+                        {{ col.replace('Property Type_', '') }}
+                    {% endif %}
+                {% endfor %}
             </div>
         </li>
         {% endfor %}
