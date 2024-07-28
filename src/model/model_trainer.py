@@ -25,17 +25,8 @@ def train_model(model, X_train, y_train, X_val, y_val, epochs=200, batch_size=32
         epochs=epochs,
         batch_size=batch_size,
         callbacks=[early_stopping, nan_terminate],
-        verbose=1
+        verbose=0
     )
-
-    # Log training process
-    for epoch, (loss, acc, val_loss, val_acc) in enumerate(zip(history.history['loss'],
-                                                               history.history['accuracy'],
-                                                               history.history['val_loss'],
-                                                               history.history['val_accuracy']), 1):
-        logging.info(f"Epoch {epoch}/{len(history.history['loss'])}")
-        logging.info(f"loss: {loss:.4f} - accuracy: {acc:.4f} - val_loss: {val_loss:.4f} - val_accuracy: {val_acc:.4f}")
-
     return history
 
 def plot_training_history(history):
