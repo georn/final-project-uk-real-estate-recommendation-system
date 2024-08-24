@@ -2,9 +2,9 @@
 venv/
 __pycache__/
 **/.DS_Store
-.idea
+.vscode
 
-ProgrammingWithDataMidterm-Dec2023.ipynb
+reports/ProgrammingWithDataMidterm-Dec2023.ipynb
 .env
 .aider*
 .ipynb_checkpoints/

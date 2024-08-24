@@ -1,0 +1,13 @@
+.git
+.gitignore
+
+reports/ProgrammingWithDataMidterm-Dec2023.ipynb
+.env
+.aider*
+.ipynb_checkpoints/
+
+.idea/
+venv/
+__pycache__/
+**/.DS_Store
+.vscode
