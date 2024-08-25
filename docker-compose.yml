@@ -8,6 +8,7 @@ services:
     environment:
       - FLASK_ENV=development
       - DATABASE_URL=postgresql://user:password@db:5432/property_db
+      - DOCKER_CONTAINER=true
     depends_on:
       - db
 
