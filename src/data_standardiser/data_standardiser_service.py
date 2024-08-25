@@ -3,6 +3,7 @@ import os
 import json
 import pandas as pd
 from datetime import datetime
+from datetime import date
 import argparse
 import logging
 from sqlalchemy.exc import IntegrityError
@@ -22,6 +23,7 @@ from src.database.database import SessionLocal
 from src.database.models.historical_property import HistoricalProperty, PropertyType, PropertyAge, PropertyDuration, \
     PPDCategoryType, RecordStatus
 from src.database.models.listing_property import ListingProperty
+from src.database.models.merged_property import MergedProperty
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -106,25 +108,16 @@ def check_preprocessed_file(file_path):
 
 
 def standardise_price(price):
-    """
-    Convert a price string to a numerical value.
-    Handles strings like '£275,000' and converts them to 275000.
-    """
     if not isinstance(price, str):
-        return price  # If it's already a number, return as-is
+        return price
 
-    # Removing currency symbols and commas
     price = price.replace('£', '').replace(',', '').replace('€', '').strip()
 
     try:
-        # Convert to float or int
-        price_value = float(price) if '.' in price else int(price)
+        return float(price) if '.' in price else int(price)
     except ValueError:
-        # Handle cases where conversion fails
-        print(f"Warning: Could not convert price '{price}' to a number.")
-        price_value = None
-
-    return price_value
+        logger.warning(f"Could not convert price '{price}' to a number.")
+        return None
 
 
 def normalize_address_scraped(address):
@@ -312,30 +305,16 @@ def process_and_save_data(scraped_data, registry_data, output_file_path):
     return merged_data
 
 
-def merge_datasets(scraped_data, registry_data):
-    # Merge the two datasets
-    merged_data = pd.concat([scraped_data, registry_data], ignore_index=True)
-
-    return merged_data
-
-
-def save_merged_data(merged_data, output_file_path):
-    try:
-        merged_data.to_csv(output_file_path, index=False)
-        print(f"Data saved successfully to {output_file_path}")
-    except Exception as e:
-        print(f"An error occurred while saving the data: {e}")
-
-
-def process_and_insert_historical_data(registry_file_path, skip_geocoding=True):
-    registry_data = read_and_process_registry_data(registry_file_path, skip_geocoding)
+def process_and_insert_historical_data(file_path):
+    df = pd.read_csv(file_path)
+    df['Price'] = df['Price'].apply(standardise_price)
 
     db = SessionLocal()
     try:
-        for _, row in registry_data.iterrows():
+        for _, row in df.iterrows():
             historical_property = HistoricalProperty(
                 id=row['Unique Transaction Identifier'],
-                price=row['price'],
+                price=row['Price'],
                 date_of_transaction=pd.to_datetime(row['Date of Transaction']).date(),
                 postal_code=row['Postal Code'],
                 property_type=PropertyType(row['Property Type']),
@@ -353,10 +332,10 @@ def process_and_insert_historical_data(registry_file_path, skip_geocoding=True):
             db.add(historical_property)
 
         db.commit()
-        print(f"Inserted {len(registry_data)} historical properties into the database.")
+        logger.info(f"Inserted {len(df)} historical properties into the database.")
     except Exception as e:
         db.rollback()
-        print(f"An error occurred while inserting data: {e}")
+        logger.error(f"An error occurred while inserting historical data: {e}")
     finally:
         db.close()
 
@@ -397,6 +376,70 @@ def process_and_insert_listing_data(file_path):
     finally:
         db.close()
 
+def enum_to_string(value):
+    return value.value if hasattr(value, 'value') else value
+
+def merge_data_in_database():
+    db = SessionLocal()
+    try:
+        # First, let's clear the existing merged properties
+        db.query(MergedProperty).delete()
+
+        # Now, let's fetch all historical properties
+        historical_properties = db.query(HistoricalProperty).all()
+
+        for hp in historical_properties:
+            # Try to find a matching listing property
+            lp = db.query(ListingProperty).filter_by(address=hp.postal_code).first()
+
+            merged_property = MergedProperty(
+                historical_id=hp.id,
+                listing_id=lp.id if lp else None,
+                price=hp.price or (lp.price if lp else None),
+                postal_code=hp.postal_code,
+                property_type=enum_to_string(hp.property_type) or (lp.property_type if lp else None),
+                date=hp.date_of_transaction,
+                property_age=enum_to_string(hp.property_age),
+                duration=enum_to_string(hp.duration),
+                bedrooms=lp.bedrooms if lp else None,
+                bathrooms=lp.bathrooms if lp else None,
+                epc_rating=lp.epc_rating if lp else None,
+                size=lp.size if lp else None,
+                features=lp.features if lp else None,
+                data_source='both' if lp else 'historical',
+                listing_time=lp.listing_time if lp else None
+            )
+            db.add(merged_property)
+
+        # Now let's add any listing properties that don't have a matching historical property
+        listing_properties = db.query(ListingProperty).outerjoin(
+            MergedProperty, ListingProperty.id == MergedProperty.listing_id
+        ).filter(MergedProperty.id == None).all()
+
+        for lp in listing_properties:
+            merged_property = MergedProperty(
+                listing_id=lp.id,
+                price=lp.price,
+                postal_code=lp.address,  # Assuming address in ListingProperty corresponds to postal_code
+                property_type=lp.property_type,
+                date=date.today(),  # Use current date for listing properties
+                bedrooms=lp.bedrooms,
+                bathrooms=lp.bathrooms,
+                epc_rating=lp.epc_rating,
+                size=lp.size,
+                features=lp.features,
+                data_source='listing',
+                listing_time=lp.listing_time
+            )
+            db.add(merged_property)
+
+        db.commit()
+        logger.info("Merged data created in the database.")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"An error occurred while merging data: {e}")
+    finally:
+        db.close()
 
 def main():
     parser = argparse.ArgumentParser(description="Process property data with optional geocoding.")
@@ -407,7 +450,7 @@ def main():
     registry_file = csv_file_path
     # output_file = '../../data/preprocessed-data/preprocessed.csv'
 
-    # process_and_insert_historical_data(registry_file, args.skip_geocoding)
+    process_and_insert_historical_data(registry_file)
     process_and_insert_listing_data(scraped_file)
 
     # Always process new data
@@ -416,6 +459,8 @@ def main():
 
     # Process and save merged data
     # merged_data = process_and_save_data(scraped_data, registry_data, output_file)
+    logger.info("Merging data in the database.")
+    merge_data_in_database()
 
     print("Data processing completed.")
 
