@@ -1,22 +1,31 @@
 import sys
 import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
-
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-sys.path.append(project_root)
-csv_file_path = os.path.join(project_root, 'data', 'historical-data', 'buckinghamshire_2023_cleaned_data.csv')
-
+import json
 import pandas as pd
 from datetime import datetime
+import argparse
+import logging
+from sqlalchemy.exc import IntegrityError
+
+# Setup path
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+sys.path.append(project_root)
+
+csv_file_path = os.path.join(project_root, 'data', 'historical-data', 'buckinghamshire_2023_cleaned_data.csv')
+json_file_path = os.path.join(project_root, 'data', 'property_data_650000.json')
+
 from geopy.geocoders import Nominatim, ArcGIS
 from geopy.extra.rate_limiter import RateLimiter
 from geopy.exc import GeocoderTimedOut, GeocoderQuotaExceeded
-import time
-import argparse
 
-from sqlalchemy.orm import Session
-from src.database.database import SessionLocal, engine
-from src.database.models.historical_property import HistoricalProperty, PropertyType, PropertyAge, PropertyDuration, PPDCategoryType, RecordStatus
+from src.database.database import SessionLocal
+from src.database.models.historical_property import HistoricalProperty, PropertyType, PropertyAge, PropertyDuration, \
+    PPDCategoryType, RecordStatus
+from src.database.models.listing_property import ListingProperty
+
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # Initialize Nominatim API
 geolocator = Nominatim(user_agent="StudentDataProjectScraper/1.0 (Contact: gor5@student.london.ac.uk)")
@@ -352,20 +361,58 @@ def process_and_insert_historical_data(registry_file_path, skip_geocoding=True):
         db.close()
 
 
+def process_and_insert_listing_data(file_path):
+    with open(file_path, 'r') as file:
+        data = json.load(file)
+
+    db = SessionLocal()
+    try:
+        for item in data:
+            listing = ListingProperty(
+                property_url=item.get('property_url'),
+                title=item.get('title'),
+                address=item.get('address'),
+                price=standardise_price(item.get('price')),
+                pricing_qualifier=item.get('pricing_qualifier'),
+                listing_time=item.get('listing_time'),
+                property_type=item.get('property_type'),
+                bedrooms=item.get('bedrooms'),
+                bathrooms=item.get('bathrooms'),
+                epc_rating=item.get('epc_rating'),
+                size=item.get('size'),
+                features=item.get('features')
+            )
+            try:
+                db.add(listing)
+                db.commit()
+                logger.info(f"Inserted listing: {listing.title}")
+            except IntegrityError:
+                db.rollback()
+                logger.warning(f"Duplicate listing found, skipping: {listing.property_url}")
+            except Exception as e:
+                db.rollback()
+                logger.error(f"Error inserting listing {listing.title}: {e}")
+
+        logger.info(f"Processed {len(data)} listings.")
+    finally:
+        db.close()
+
+
 def main():
     parser = argparse.ArgumentParser(description="Process property data with optional geocoding.")
     parser.add_argument('--skip-geocoding', action='store_true', help='Skip the geocoding process')
     args = parser.parse_args()
 
-    # scraped_file = '../../data/property_data_650000.json'
+    scraped_file = json_file_path
     registry_file = csv_file_path
     # output_file = '../../data/preprocessed-data/preprocessed.csv'
 
-    process_and_insert_historical_data(registry_file, args.skip_geocoding)
+    # process_and_insert_historical_data(registry_file, args.skip_geocoding)
+    process_and_insert_listing_data(scraped_file)
 
     # Always process new data
     # scraped_data = read_and_process_scraped_data(scraped_file, args.skip_geocoding)
-    registry_data = read_and_process_registry_data(registry_file, args.skip_geocoding)
+    # registry_data = read_and_process_registry_data(registry_file, args.skip_geocoding)
 
     # Process and save merged data
     # merged_data = process_and_save_data(scraped_data, registry_data, output_file)
@@ -375,7 +422,7 @@ def main():
     # Optional: Print some information about the merged dataset
     # print(f"Total number of records: {len(merged_data)}")
     # print(f"Number of scraped records: {len(scraped_data)}")
-    print(f"Number of registry records: {len(registry_data)}")
+    # print(f"Number of registry records: {len(registry_data)}")
     # print(f"Columns in the merged dataset: {merged_data.columns.tolist()}")
 
 
