@@ -11,11 +11,19 @@ class PropertyType(enum.Enum):
 
 class PropertyAge(enum.Enum):
     NEW = 'N'
-    OLD = 'O'
+    OLD = 'Y'
 
 class PropertyDuration(enum.Enum):
     FREEHOLD = 'F'
     LEASEHOLD = 'L'
+
+class PPDCategoryType(enum.Enum):
+    STANDARD_PRICE_PAID = 'A'
+    ADDITIONAL_PRICE_PAID = 'B'
+
+class RecordStatus(enum.Enum):
+    ADDITION = 'A'
+    DELETION = 'D'
 
 class HistoricalProperty(Base):
     __tablename__ = 'historical_properties'
@@ -33,8 +41,8 @@ class HistoricalProperty(Base):
     locality = Column(String)
     town_city = Column(String)
     district = Column(String)
-    ppd_category_type = Column(String)
-    record_status = Column(String)
+    ppd_category_type = Column(Enum(PPDCategoryType), nullable=False)
+    record_status = Column(Enum(RecordStatus), nullable=False)
 
     def __repr__(self):
         return f"<HistoricalProperty(id='{self.id}', postal_code='{self.postal_code}', price={self.price})>"

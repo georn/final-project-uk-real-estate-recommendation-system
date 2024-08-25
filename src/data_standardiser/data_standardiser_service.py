@@ -1,11 +1,22 @@
-import pandas as pd
+import sys
 import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+sys.path.append(project_root)
+csv_file_path = os.path.join(project_root, 'data', 'historical-data', 'buckinghamshire_2023_cleaned_data.csv')
+
+import pandas as pd
 from datetime import datetime
 from geopy.geocoders import Nominatim, ArcGIS
 from geopy.extra.rate_limiter import RateLimiter
 from geopy.exc import GeocoderTimedOut, GeocoderQuotaExceeded
 import time
 import argparse
+
+from sqlalchemy.orm import Session
+from src.database.database import SessionLocal, engine
+from src.database.models.historical_property import HistoricalProperty, PropertyType, PropertyAge, PropertyDuration, PPDCategoryType, RecordStatus
 
 # Initialize Nominatim API
 geolocator = Nominatim(user_agent="StudentDataProjectScraper/1.0 (Contact: gor5@student.london.ac.uk)")
@@ -47,6 +58,7 @@ scraped_to_registry_property_type_mapping = {
     'Townhouse': 'D'
 }
 
+
 def geocode_address(address):
     try:
         location = geocode(address)
@@ -72,6 +84,7 @@ def geocode_address(address):
         print(f"Error geocoding {address}: {e}")
         return None, None
 
+
 def check_preprocessed_file(file_path):
     """Check if the preprocessed file exists and has latitude and longitude."""
     if os.path.exists(file_path):
@@ -81,6 +94,7 @@ def check_preprocessed_file(file_path):
                 # File exists and latitude and longitude are filled
                 return True
     return False
+
 
 def standardise_price(price):
     """
@@ -103,6 +117,7 @@ def standardise_price(price):
 
     return price_value
 
+
 def normalize_address_scraped(address):
     """
     Normalize addresses from the scraped data.
@@ -111,6 +126,7 @@ def normalize_address_scraped(address):
     if 'Buckinghamshire' not in address:
         address += ', Buckinghamshire'
     return address.strip()
+
 
 def normalize_address_land_registry(row):
     # Convert each component to a string to avoid TypeError
@@ -123,6 +139,7 @@ def normalize_address_land_registry(row):
     ]
     # Join the non-empty components
     return ', '.join(filter(None, components))
+
 
 # Read JSON, standardize price, normalize address, add source column
 
@@ -176,30 +193,24 @@ def read_and_process_scraped_data(scraped_file_path, skip_geocoding):
 
     return scraped_data
 
+
 def read_and_process_registry_data(registry_file_path, skip_geocoding):
     registry_data = pd.read_csv(registry_file_path)
-
-    # Create 'id' column if it doesn't exist
-    if 'id' not in registry_data.columns:
-        registry_data['id'] = range(1, len(registry_data) + 1)
-    else:
-        registry_data['id'] = registry_data['id'].astype(int)
 
     registry_data['Price'] = registry_data['Price'].apply(standardise_price)
     registry_data['normalized_address'] = registry_data.apply(normalize_address_land_registry, axis=1)
     registry_data.rename(columns={'Price': 'price'}, inplace=True)
-    registry_data['source'] = 'registry'
 
     if not skip_geocoding:
         lat_long = registry_data['normalized_address'].apply(geocode_address)
         registry_data['latitude'] = lat_long.apply(lambda x: x[0] if x else None)
         registry_data['longitude'] = lat_long.apply(lambda x: x[1] if x else None)
     else:
-        # If skipping geocoding, add placeholder columns
         registry_data['latitude'] = None
         registry_data['longitude'] = None
 
     return registry_data
+
 
 def update_date_column(df, source_column, new_date):
     """
@@ -217,6 +228,7 @@ def update_date_column(df, source_column, new_date):
         print("Warning: 'source' column not found. Using default date for all rows.")
         df['Date'] = new_date
     return df
+
 
 def process_and_save_data(scraped_data, registry_data, output_file_path):
     """
@@ -290,11 +302,13 @@ def process_and_save_data(scraped_data, registry_data, output_file_path):
 
     return merged_data
 
+
 def merge_datasets(scraped_data, registry_data):
     # Merge the two datasets
     merged_data = pd.concat([scraped_data, registry_data], ignore_index=True)
 
     return merged_data
+
 
 def save_merged_data(merged_data, output_file_path):
     try:
@@ -303,29 +317,67 @@ def save_merged_data(merged_data, output_file_path):
     except Exception as e:
         print(f"An error occurred while saving the data: {e}")
 
+
+def process_and_insert_historical_data(registry_file_path, skip_geocoding=True):
+    registry_data = read_and_process_registry_data(registry_file_path, skip_geocoding)
+
+    db = SessionLocal()
+    try:
+        for _, row in registry_data.iterrows():
+            historical_property = HistoricalProperty(
+                id=row['Unique Transaction Identifier'],
+                price=row['price'],
+                date_of_transaction=pd.to_datetime(row['Date of Transaction']).date(),
+                postal_code=row['Postal Code'],
+                property_type=PropertyType(row['Property Type']),
+                property_age=PropertyAge(row['Old/New']),
+                duration=PropertyDuration(row['Duration']),
+                paon=row['PAON'],
+                saon=row['SAON'],
+                street=row['Street'],
+                locality=row['Locality'],
+                town_city=row['Town/City'],
+                district=row['District'],
+                ppd_category_type=PPDCategoryType(row['PPD Category Type']),
+                record_status=RecordStatus(row['Record Status'])
+            )
+            db.add(historical_property)
+
+        db.commit()
+        print(f"Inserted {len(registry_data)} historical properties into the database.")
+    except Exception as e:
+        db.rollback()
+        print(f"An error occurred while inserting data: {e}")
+    finally:
+        db.close()
+
+
 def main():
     parser = argparse.ArgumentParser(description="Process property data with optional geocoding.")
     parser.add_argument('--skip-geocoding', action='store_true', help='Skip the geocoding process')
     args = parser.parse_args()
 
-    scraped_file = '../../data/property_data_650000.json'
-    registry_file = '../../data/historical-data/buckinghamshire_2023_cleaned_data.csv'
-    output_file = '../../data/preprocessed-data/preprocessed.csv'
+    # scraped_file = '../../data/property_data_650000.json'
+    registry_file = csv_file_path
+    # output_file = '../../data/preprocessed-data/preprocessed.csv'
+
+    process_and_insert_historical_data(registry_file, args.skip_geocoding)
 
     # Always process new data
-    scraped_data = read_and_process_scraped_data(scraped_file, args.skip_geocoding)
+    # scraped_data = read_and_process_scraped_data(scraped_file, args.skip_geocoding)
     registry_data = read_and_process_registry_data(registry_file, args.skip_geocoding)
 
     # Process and save merged data
-    merged_data = process_and_save_data(scraped_data, registry_data, output_file)
+    # merged_data = process_and_save_data(scraped_data, registry_data, output_file)
 
     print("Data processing completed.")
 
     # Optional: Print some information about the merged dataset
-    print(f"Total number of records: {len(merged_data)}")
-    print(f"Number of scraped records: {len(scraped_data)}")
+    # print(f"Total number of records: {len(merged_data)}")
+    # print(f"Number of scraped records: {len(scraped_data)}")
     print(f"Number of registry records: {len(registry_data)}")
-    print(f"Columns in the merged dataset: {merged_data.columns.tolist()}")
+    # print(f"Columns in the merged dataset: {merged_data.columns.tolist()}")
+
 
 if __name__ == "__main__":
     main()
