@@ -1,5 +1,7 @@
 from sqlalchemy import Column, Integer, String, Float, JSON
+
 from src.database.database import Base
+
 
 class ListingProperty(Base):
     __tablename__ = 'listing_properties'

@@ -1,5 +1,7 @@
 from sqlalchemy import Column, BigInteger, Integer, Float, String, JSON, Boolean
+
 from src.database.database import Base
+
 
 class ProcessedProperty(Base):
     __tablename__ = 'processed_properties'

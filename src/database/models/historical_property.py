@@ -1,6 +1,9 @@
-from sqlalchemy import Column, Integer, String, Date, Enum
-from src.database.database import Base
 import enum
+
+from sqlalchemy import Column, Integer, String, Date, Enum
+
+from src.database.database import Base
+
 
 class PropertyType(enum.Enum):
     DETACHED = 'D'

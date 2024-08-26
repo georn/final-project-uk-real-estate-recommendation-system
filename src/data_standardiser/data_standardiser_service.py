@@ -1,16 +1,14 @@
-import sys
-import os
-import json
-import re
-
-import geopy
-import pandas as pd
-from datetime import date
 import argparse
+import json
 import logging
+import os
+import ssl
+import sys
+from datetime import date
 
 import certifi
-import ssl
+import geopy
+import pandas as pd
 from sqlalchemy.dialects.postgresql import insert
 
 # Setup path

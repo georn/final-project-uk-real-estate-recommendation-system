@@ -1,8 +1,12 @@
-import pandas as pd
-import numpy as np
-from sklearn.model_selection import train_test_split
 import logging
 import time
+
+import numpy as np
+import pandas as pd
+from sklearn.model_selection import train_test_split
+
+from src.database.database import SessionLocal
+from src.database.models.processed_property import ProcessedProperty
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -21,21 +25,21 @@ def inspect_data(X_property, X_user, y):
 
     # Inspect property data
     logging.info("Property data inspection:")
-    for i, column in enumerate(X_property.columns):
+    for column in X_property.columns:
         if X_property[column].dtype in [np.float64, np.int64]:
-            logging.info(f"Column {i} ({column}) - min: {X_property[column].min():.2f}, max: {X_property[column].max():.2f}, mean: {X_property[column].mean():.2f}, std: {X_property[column].std():.2f}")
+            logging.info(f"Column {column} - min: {X_property[column].min():.2f}, max: {X_property[column].max():.2f}, mean: {X_property[column].mean():.2f}, std: {X_property[column].std():.2f}")
         else:
             value_counts = X_property[column].value_counts()
-            logging.info(f"Column {i} ({column}) - unique values: {len(value_counts)}, top value: {value_counts.index[0]}, top count: {value_counts.iloc[0]}")
+            logging.info(f"Column {column} - unique values: {len(value_counts)}, top value: {value_counts.index[0]}, top count: {value_counts.iloc[0]}")
 
     # Inspect user data
     logging.info("User data inspection:")
-    for i, column in enumerate(X_user.columns):
+    for column in X_user.columns:
         if X_user[column].dtype in [np.float64, np.int64]:
-            logging.info(f"Column {i} ({column}) - min: {X_user[column].min():.2f}, max: {X_user[column].max():.2f}, mean: {X_user[column].mean():.2f}, std: {X_user[column].std():.2f}")
+            logging.info(f"Column {column} - min: {X_user[column].min():.2f}, max: {X_user[column].max():.2f}, mean: {X_user[column].mean():.2f}, std: {X_user[column].std():.2f}")
         else:
             value_counts = X_user[column].value_counts()
-            logging.info(f"Column {i} ({column}) - unique values: {len(value_counts)}, top value: {value_counts.index[0]}, top count: {value_counts.iloc[0]}")
+            logging.info(f"Column {column} - unique values: {len(value_counts)}, top value: {value_counts.index[0]}, top count: {value_counts.iloc[0]}")
 
     # Check target variable
     logging.info(f"Target variable distribution: {np.bincount(y)}")
@@ -45,16 +49,23 @@ def handle_nan_values(df):
     df = df.copy()
     for col in df.columns:
         if df[col].dtype in [np.float64, np.int64]:
-            df[col].fillna(df[col].median(), inplace=True)
+            df[col] = df[col].fillna(df[col].median())
         else:
-            df[col].fillna(df[col].mode().iloc[0] if not df[col].mode().empty else 'Unknown', inplace=True)
+            # Note: This will leave all-NaN columns as NaN
+            df[col] = df[col].fillna(df[col].mode().iloc[0] if not df[col].mode().empty else 'Unknown')
     return df
 
-def load_and_preprocess_data(property_file_path, user_file_path, sample_size=None, pairs_per_user=10):
+def load_and_preprocess_data(user_file_path, sample_size=None, pairs_per_user=10):
     start_time = time.time()
 
-    logging.info(f"Loading property data from: {property_file_path}")
-    property_df = pd.read_csv(property_file_path)
+    logging.info("Loading property data from database")
+    db = SessionLocal()
+    try:
+        query = db.query(ProcessedProperty)
+        property_df = pd.read_sql(query.statement, db.bind)
+    finally:
+        db.close()
+
     if sample_size:
         property_df = property_df.sample(n=min(sample_size, len(property_df)), random_state=42)
     logging.info(f"Property data shape: {property_df.shape}")
@@ -70,26 +81,11 @@ def load_and_preprocess_data(property_file_path, user_file_path, sample_size=Non
     logging.info(f"Pairs created. Shape: {pairs.shape}")
 
     # Define property_features based on available columns
-    property_features = ['price', 'size_sq_ft', 'year', 'month', 'day_of_week']
-    location_features = [col for col in pairs.columns if col.startswith('location_')]
+    property_features = ['price', 'size_sq_ft', 'year', 'month', 'day_of_week',
+                         'has_garden', 'has_parking', 'location_Urban', 'location_Suburban', 'location_Rural',
+                         'latitude', 'longitude', 'epc_rating_encoded']
     property_type_features = [col for col in pairs.columns if col.startswith('Property Type_')]
-
-    property_features.extend(location_features)
     property_features.extend(property_type_features)
-
-    # Add 'has_garden' and 'has_parking' if they exist
-    if 'has_garden' in pairs.columns:
-        property_features.append('has_garden')
-    if 'has_parking' in pairs.columns:
-        property_features.append('has_parking')
-
-    # If location features are missing, add dummy columns
-    if not location_features:
-        pairs['location_Urban'] = 0
-        pairs['location_Suburban'] = 0
-        pairs['location_Rural'] = 0
-        property_features.extend(['location_Urban', 'location_Suburban', 'location_Rural'])
-        logging.warning("Location features were missing. Added dummy columns.")
 
     user_features = ['Income', 'Savings', 'MaxCommuteTime', 'FamilySize']
 
@@ -109,9 +105,11 @@ def load_and_preprocess_data(property_file_path, user_file_path, sample_size=Non
     X_user = handle_nan_values(X_user)
 
     logging.info("Calculating affordability features")
-    X_property['price_to_income_ratio'] = X_property['price'] / pairs['Income']
-    X_property['price_to_savings_ratio'] = X_property['price'] / pairs['Savings']
-    X_property['affordability_score'] = (pairs['Income'] * 4 + pairs['Savings']) / X_property['price']
+    X_property = X_property.assign(
+        price_to_income_ratio = X_property['price'] / pairs['Income'],
+        price_to_savings_ratio = X_property['price'] / pairs['Savings'],
+        affordability_score = (pairs['Income'] * 4 + pairs['Savings']) / X_property['price']
+    )
 
     logging.info("Creating target variable")
     # Adjust this based on your specific criteria for a suitable property
@@ -131,8 +129,8 @@ def create_property_user_pairs(property_df, user_df, pairs_per_user=10):
     result = pd.DataFrame(pairs)
     return result
 
-def load_data(property_file_path, user_file_path, sample_size=None, pairs_per_user=10):
-    X_property, X_user, y = load_and_preprocess_data(property_file_path, user_file_path, sample_size, pairs_per_user)
+def load_data(user_file_path, sample_size=None, pairs_per_user=10):
+    X_property, X_user, y = load_and_preprocess_data(user_file_path, sample_size, pairs_per_user)
 
     X_property_train, X_property_test, X_user_train, X_user_test, y_train, y_test = train_test_split(
         X_property, X_user, y, test_size=0.2, random_state=42, stratify=y)
@@ -140,14 +138,13 @@ def load_data(property_file_path, user_file_path, sample_size=None, pairs_per_us
     return X_property_train, X_property_test, X_user_train, X_user_test, y_train, y_test
 
 if __name__ == "__main__":
-    property_file_path = '../../data/ml-ready-data/ml_ready_data.csv'
     user_file_path = '../../data/synthetic_user_profiles/synthetic_user_profiles.csv'
     sample_size = 1000  # Adjust this value as needed
     pairs_per_user = 10  # Adjust this value as needed
 
     try:
         logging.info("Starting data loading process")
-        X_property_train, X_property_test, X_user_train, X_user_test, y_train, y_test = load_data(property_file_path, user_file_path, sample_size, pairs_per_user)
+        X_property_train, X_property_test, X_user_train, X_user_test, y_train, y_test = load_data(user_file_path, sample_size, pairs_per_user)
 
         # Display information about the loaded data
         logging.info("\nTraining set shapes:")

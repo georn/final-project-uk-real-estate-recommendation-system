@@ -1,8 +1,11 @@
-import unittest
-import pandas as pd
 import os
 import tempfile
+import unittest
+
+import pandas as pd
+
 from src.data_cleanser.data_cleanser_service import cleanse_data
+
 
 class TestDataCleanserService(unittest.TestCase):
 
