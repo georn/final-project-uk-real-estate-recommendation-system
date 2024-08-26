@@ -7,6 +7,7 @@ from sklearn.model_selection import train_test_split
 
 from src.database.database import SessionLocal
 from src.database.models.processed_property import ProcessedProperty
+from src.database.models.synthetic_user import SyntheticUser
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -55,25 +56,29 @@ def handle_nan_values(df):
             df[col] = df[col].fillna(df[col].mode().iloc[0] if not df[col].mode().empty else 'Unknown')
     return df
 
-def load_and_preprocess_data(user_file_path, sample_size=None, pairs_per_user=10):
+def load_and_preprocess_data(sample_size=None, pairs_per_user=10):
     start_time = time.time()
 
-    logging.info("Loading property data from database")
-    db = SessionLocal()
     try:
-        query = db.query(ProcessedProperty)
-        property_df = pd.read_sql(query.statement, db.bind)
+        db = SessionLocal()
+        try:
+            logging.info("Loading property data from database")
+            property_query = db.query(ProcessedProperty)
+            if sample_size:
+                property_query = property_query.limit(sample_size)
+            property_df = pd.read_sql(property_query.statement, db.bind)
+
+            logging.info("Loading user data from database")
+            user_query = db.query(SyntheticUser)
+            if sample_size:
+                user_query = user_query.limit(sample_size)
+            user_df = pd.read_sql(user_query.statement, db.bind)
+        finally:
+            db.close()
     finally:
         db.close()
 
-    if sample_size:
-        property_df = property_df.sample(n=min(sample_size, len(property_df)), random_state=42)
     logging.info(f"Property data shape: {property_df.shape}")
-
-    logging.info(f"Loading user data from: {user_file_path}")
-    user_df = pd.read_csv(user_file_path)
-    if sample_size:
-        user_df = user_df.sample(n=min(sample_size, len(user_df)), random_state=42)
     logging.info(f"User data shape: {user_df.shape}")
 
     logging.info("Creating property-user pairs")
@@ -124,13 +129,13 @@ def create_property_user_pairs(property_df, user_df, pairs_per_user=10):
         user_properties = property_df.sample(n=min(pairs_per_user, len(property_df)), replace=False)
         user_dict = user.to_dict()
         for _, prop in user_properties.iterrows():
-            pair = {**prop, **user_dict}
+            pair = {**prop.to_dict(), **user_dict}
             pairs.append(pair)
     result = pd.DataFrame(pairs)
     return result
 
-def load_data(user_file_path, sample_size=None, pairs_per_user=10):
-    X_property, X_user, y = load_and_preprocess_data(user_file_path, sample_size, pairs_per_user)
+def load_data(sample_size=None, pairs_per_user=10):
+    X_property, X_user, y = load_and_preprocess_data(sample_size, pairs_per_user)
 
     X_property_train, X_property_test, X_user_train, X_user_test, y_train, y_test = train_test_split(
         X_property, X_user, y, test_size=0.2, random_state=42, stratify=y)
@@ -138,13 +143,12 @@ def load_data(user_file_path, sample_size=None, pairs_per_user=10):
     return X_property_train, X_property_test, X_user_train, X_user_test, y_train, y_test
 
 if __name__ == "__main__":
-    user_file_path = '../../data/synthetic_user_profiles/synthetic_user_profiles.csv'
-    sample_size = 1000  # Adjust this value as needed
-    pairs_per_user = 10  # Adjust this value as needed
+    sample_size = 1000
+    pairs_per_user = 10
 
     try:
         logging.info("Starting data loading process")
-        X_property_train, X_property_test, X_user_train, X_user_test, y_train, y_test = load_data(user_file_path, sample_size, pairs_per_user)
+        X_property_train, X_property_test, X_user_train, X_user_test, y_train, y_test = load_data(sample_size, pairs_per_user)
 
         # Display information about the loaded data
         logging.info("\nTraining set shapes:")
