@@ -51,6 +51,7 @@ def handle_nan_values(df):
         if df[col].dtype in [np.float64, np.int64]:
             df[col] = df[col].fillna(df[col].median())
         else:
+            # Note: This will leave all-NaN columns as NaN
             df[col] = df[col].fillna(df[col].mode().iloc[0] if not df[col].mode().empty else 'Unknown')
     return df
 
