@@ -1,0 +1,28 @@
+[run]
+source = src
+branch = True
+
+[paths]
+source =
+    src/
+    */site-packages/
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    if self\.debug
+    raise NotImplementedError
+    pass
+    except ImportError:
+    if __name__ == .__main__.:
+    def main()
+    print
+    logging\.
+    if TYPE_CHECKING:
+
+ignore_errors = True
+show_missing = True
+
+[html]
+directory = coverage_html_report

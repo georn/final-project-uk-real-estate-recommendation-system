@@ -2,8 +2,26 @@ services:
   web:
     build: .
     ports:
-      - "5000:5000"
+      - "5001:5000"
     volumes:
       - .:/app
     environment:
       - FLASK_ENV=development
+      - DATABASE_URL=postgresql://user:password@db:5432/property_db
+      - DOCKER_CONTAINER=true
+    depends_on:
+      - db
+
+  db:
+    image: postgres:13
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=property_db
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+    ports:
+      - "5432:5432"
+
+volumes:
+  postgres_data:

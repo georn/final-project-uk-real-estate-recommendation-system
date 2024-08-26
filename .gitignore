@@ -1,8 +1,11 @@
 .idea/
 venv/
+venv-py311/
+venv-old
 __pycache__/
 **/.DS_Store
 .vscode
+.coverage
 
 reports/ProgrammingWithDataMidterm-Dec2023.ipynb
 .env
