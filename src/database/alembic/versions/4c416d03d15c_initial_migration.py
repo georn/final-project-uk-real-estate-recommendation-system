@@ -1,8 +1,8 @@
 """Initial migration
 
-Revision ID: 2b45c9d910f4
+Revision ID: 4c416d03d15c
 Revises: 
-Create Date: 2024-08-25 22:32:35.955532
+Create Date: 2024-08-25 23:01:58.683086
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '2b45c9d910f4'
+revision: str = '4c416d03d15c'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -44,7 +44,7 @@ def upgrade() -> None:
     sa.Column('property_url', sa.String(), nullable=False),
     sa.Column('title', sa.String(), nullable=False),
     sa.Column('address', sa.String(), nullable=False),
-    sa.Column('price', sa.String(), nullable=False),
+    sa.Column('price', sa.Float(), nullable=False),
     sa.Column('pricing_qualifier', sa.String(), nullable=True),
     sa.Column('listing_time', sa.String(), nullable=True),
     sa.Column('property_type', sa.String(), nullable=False),
@@ -53,6 +53,8 @@ def upgrade() -> None:
     sa.Column('epc_rating', sa.String(), nullable=True),
     sa.Column('size', sa.String(), nullable=True),
     sa.Column('features', sa.JSON(), nullable=True),
+    sa.Column('latitude', sa.Float(), nullable=True),
+    sa.Column('longitude', sa.Float(), nullable=True),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('property_url')
     )
@@ -74,6 +76,8 @@ def upgrade() -> None:
     sa.Column('features', sa.JSON(), nullable=True),
     sa.Column('data_source', sa.String(), nullable=True),
     sa.Column('listing_time', sa.String(), nullable=True),
+    sa.Column('latitude', sa.Float(), nullable=True),
+    sa.Column('longitude', sa.Float(), nullable=True),
     sa.ForeignKeyConstraint(['historical_id'], ['historical_properties.id'], ),
     sa.ForeignKeyConstraint(['listing_id'], ['listing_properties.id'], ),
     sa.PrimaryKeyConstraint('id')

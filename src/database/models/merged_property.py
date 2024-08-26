@@ -20,6 +20,8 @@ class MergedProperty(Base):
     features = Column(JSON)
     data_source = Column(String)
     listing_time = Column(String)
+    latitude = Column(Float)
+    longitude = Column(Float)
 
     def __repr__(self):
         return f"<MergedProperty(id={self.id}, postal_code='{self.postal_code}', price={self.price})>"
