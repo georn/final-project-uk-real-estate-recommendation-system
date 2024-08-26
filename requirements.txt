@@ -43,6 +43,7 @@ huggingface-hub==0.24.6
 idna==3.7
 importlib_metadata==7.2.1
 importlib_resources==6.4.3
+iniconfig==2.0.0
 itsdangerous==2.2.0
 Jinja2==3.1.4
 jiter==0.5.0
@@ -72,6 +73,7 @@ pandas==2.2.2
 pathspec==0.12.1
 pillow==10.4.0
 pip-tools==7.4.1
+pluggy==1.5.0
 prompt_toolkit==3.0.47
 protobuf==4.25.4
 psycopg2-binary==2.9.9
@@ -85,6 +87,7 @@ pypager==3.0.1
 pypandoc==1.13
 pyperclip==1.9.0
 pyproject_hooks==1.1.0
+pytest==8.3.2
 python-dateutil==2.9.0.post0
 python-dotenv==1.0.1
 pytz==2024.1

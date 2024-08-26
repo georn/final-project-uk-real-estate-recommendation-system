@@ -12,8 +12,6 @@ import logging
 import certifi
 import ssl
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy import update
-from sqlalchemy.exc import IntegrityError
 
 # Setup path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -80,13 +78,30 @@ scraped_to_registry_property_type_mapping = {
     'Townhouse': 'D'
 }
 
+import re
+
 def clean_address(address):
-    # Remove any special characters or extra spaces
-    cleaned = re.sub(r'[^\w\s]', '', address)
+    # Remove any special characters except letters, numbers, spaces, and commas
+    cleaned = re.sub(r'[^\w\s,]', '', address)
+    # Replace multiple spaces with a single space
     cleaned = re.sub(r'\s+', ' ', cleaned).strip()
-    # Ensure it ends with ", UK" or ", United Kingdom"
-    if not cleaned.lower().endswith(('uk', 'united kingdom')):
+    # Remove any stray commas (e.g., multiple commas in a row)
+    cleaned = re.sub(r',+', ',', cleaned)
+    # Ensure there's a space after each comma
+    cleaned = re.sub(r',(?=[^\s])', ', ', cleaned)
+    # Remove commas that are not followed by "UK" or "United Kingdom"
+    cleaned = re.sub(r',(?=\s+[^UK]|[^United Kingdom])', '', cleaned)
+    # Ensure that "UK" is treated as a single unit and not split
+    if cleaned.lower().endswith('uk'):
+        if not cleaned.endswith(', UK'):
+            cleaned = cleaned[:-2].rstrip() + ', UK'
+    elif cleaned.lower().endswith('united kingdom'):
+        if not cleaned.endswith(', United Kingdom'):
+            cleaned = cleaned[:-14].rstrip() + ', United Kingdom'
+    else:
         cleaned += ', UK'
+    # Final clean-up of any stray spaces
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
     return cleaned
 
 
