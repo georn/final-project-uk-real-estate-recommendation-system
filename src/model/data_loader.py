@@ -59,19 +59,22 @@ def handle_nan_values(df):
 def load_and_preprocess_data(sample_size=None, pairs_per_user=10):
     start_time = time.time()
 
-    db = SessionLocal()
     try:
-        logging.info("Loading property data from database")
-        property_query = db.query(ProcessedProperty)
-        if sample_size:
-            property_query = property_query.limit(sample_size)
-        property_df = pd.read_sql(property_query.statement, db.bind)
+        db = SessionLocal()
+        try:
+            logging.info("Loading property data from database")
+            property_query = db.query(ProcessedProperty)
+            if sample_size:
+                property_query = property_query.limit(sample_size)
+            property_df = pd.read_sql(property_query.statement, db.bind)
 
-        logging.info("Loading user data from database")
-        user_query = db.query(SyntheticUser)
-        if sample_size:
-            user_query = user_query.limit(sample_size)
-        user_df = pd.read_sql(user_query.statement, db.bind)
+            logging.info("Loading user data from database")
+            user_query = db.query(SyntheticUser)
+            if sample_size:
+                user_query = user_query.limit(sample_size)
+            user_df = pd.read_sql(user_query.statement, db.bind)
+        finally:
+            db.close()
     finally:
         db.close()
 
@@ -126,7 +129,7 @@ def create_property_user_pairs(property_df, user_df, pairs_per_user=10):
         user_properties = property_df.sample(n=min(pairs_per_user, len(property_df)), replace=False)
         user_dict = user.to_dict()
         for _, prop in user_properties.iterrows():
-            pair = {**prop, **user_dict}
+            pair = {**prop.to_dict(), **user_dict}
             pairs.append(pair)
     result = pd.DataFrame(pairs)
     return result
