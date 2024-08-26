@@ -1,5 +1,7 @@
 from sqlalchemy import Column, Integer, String, Float, Date, JSON, ForeignKey
+
 from src.database.database import Base
+
 
 class MergedProperty(Base):
     __tablename__ = 'merged_properties'

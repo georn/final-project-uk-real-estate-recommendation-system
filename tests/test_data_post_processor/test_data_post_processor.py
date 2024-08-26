@@ -1,8 +1,11 @@
-import pytest
-from unittest.mock import patch, MagicMock, call
-import pandas as pd
+from unittest.mock import patch, MagicMock
+
 import numpy as np
-from src.data_preparation.data_post_processor import process_data, handle_missing_values, encode_categorical_variables, engineer_features, store_processed_data
+import pandas as pd
+import pytest
+
+from src.data_preparation.data_post_processor import process_data, handle_missing_values, encode_categorical_variables, \
+    engineer_features, store_processed_data
 from src.database.models.processed_property import ProcessedProperty
 
 # Constants

@@ -1,6 +1,7 @@
-import pytest
 import sys
-from unittest.mock import patch, mock_open, MagicMock
+from unittest.mock import MagicMock
+
+import pytest
 
 from src.data_standardiser.data_standardiser_service import clean_address
 
