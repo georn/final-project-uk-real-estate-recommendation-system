@@ -4,6 +4,7 @@ import logging
 import os
 import ssl
 import sys
+import re
 from datetime import date
 
 import certifi
@@ -76,7 +77,6 @@ scraped_to_registry_property_type_mapping = {
     'Townhouse': 'D'
 }
 
-import re
 
 def clean_address(address):
     # Remove any special characters except letters, numbers, spaces, and commas
@@ -183,6 +183,105 @@ def normalize_address_land_registry(row):
     return ', '.join(filter(None, components))
 
 
+def standardize_property_type(property_type):
+    registry_mapping = {
+        'D': 'Detached',
+        'S': 'Semi-Detached',
+        'T': 'Terraced',
+        'F': 'Flat/Maisonette',
+        'O': 'Other'
+    }
+
+    scraped_mapping = {
+        'Apartment': 'Flat/Maisonette',
+        'Barn': 'Other',
+        'Barn conversion': 'Other',
+        'Block of apartments': 'Flat/Maisonette',
+        'Bungalow': 'Detached',
+        'Chalet': 'Other',
+        'Character property': 'Other',
+        'Cluster house': 'Other',
+        'Coach house': 'Flat/Maisonette',
+        'Cottage': 'Detached',
+        'Detached bungalow': 'Detached',
+        'Detached house': 'Detached',
+        'Duplex': 'Flat/Maisonette',
+        'End of terrace house': 'Terraced',
+        'Equestrian property': 'Other',
+        'Farm house': 'Other',
+        'Flat': 'Flat/Maisonette',
+        'Ground floor flat': 'Flat/Maisonette',
+        'Ground floor maisonette': 'Flat/Maisonette',
+        'House': 'Detached',
+        'Houseboat': 'Other',
+        'Link detached house': 'Detached',
+        'Lodge': 'Other',
+        'Log cabin': 'Other',
+        'Maisonette': 'Flat/Maisonette',
+        'Mews': 'Other',
+        'Penthouse': 'Flat/Maisonette',
+        'Semi-detached bungalow': 'Semi-Detached',
+        'Semi-detached house': 'Semi-Detached',
+        'Studio': 'Flat/Maisonette',
+        'Terraced house': 'Terraced',
+        'Townhouse': 'Terraced'
+    }
+
+    # First, check if it's a registry type
+    if property_type in registry_mapping:
+        return registry_mapping[property_type]
+
+    # Then, check if it's a scraped type
+    elif property_type in scraped_mapping:
+        return scraped_mapping[property_type]
+
+    # If it's neither, return 'Other'
+    else:
+        return 'Other'
+
+def extract_number(value):
+    if value is None:
+        return None
+    match = re.search(r'\d+', str(value))
+    return int(match.group()) if match else None
+
+def standardize_epc_rating(rating):
+    if rating is None:
+        return None
+    match = re.search(r'[A-G]', str(rating), re.IGNORECASE)
+    return match.group().upper() if match else None
+
+def standardize_size(size):
+    if size is None:
+        return None
+
+    # Remove any thousands separators and extra whitespace
+    size = re.sub(r'[,\s]+', ' ', str(size)).strip()
+
+    # Try to extract both sq ft and sq m values
+    match = re.search(r'(\d+(?:\.\d+)?)\s*sq\s*ft\s*/\s*(\d+(?:\.\d+)?)\s*sq\s*m', size, re.IGNORECASE)
+
+    if match:
+        sq_ft, sq_m = map(float, match.groups())
+    else:
+        # If we don't have both, try to find just one and calculate the other
+        match = re.search(r'(\d+(?:\.\d+)?)\s*(sq\s*ft|sq\s*m)', size, re.IGNORECASE)
+        if match:
+            value, unit = float(match.group(1)), match.group(2).lower()
+            if 'sq ft' in unit:
+                sq_ft, sq_m = value, value / 10.7639
+            else:
+                sq_m, sq_ft = value, value * 10.7639
+        else:
+            return size  # If we can't parse it, return the original string
+
+    # Ensure sq_ft is always the larger number
+    if sq_m > sq_ft:
+        sq_ft, sq_m = sq_m * 10.7639, sq_m
+
+    return f"{int(sq_ft)} sq ft / {int(sq_m)} sq m"
+
+
 # Read JSON, standardize price, normalize address, add source column
 
 
@@ -275,6 +374,11 @@ def process_and_insert_listing_data(file_path, skip_geocoding=False):
                 if latitude is None or longitude is None:
                     logger.warning(f"Failed to geocode address: {address}")
 
+            original_property_type = item.get('property_type')
+            # standardized_property_type = standardize_property_type(original_property_type)
+
+            # logger.info(f"Original property type: {original_property_type}, Standardized: {standardized_property_type}")
+
             stmt = insert(ListingProperty).values(
                 property_url=item.get('property_url'),
                 title=item.get('title'),
@@ -341,14 +445,14 @@ def merge_data_in_database():
                 listing_id=lp.id if lp else None,
                 price=hp.price or (lp.price if lp else None),
                 postal_code=hp.postal_code,
-                property_type=enum_to_string(hp.property_type) or (lp.property_type if lp else None),
+                property_type=standardize_property_type(enum_to_string(hp.property_type) or (lp.property_type if lp else None)),
                 date=hp.date_of_transaction,
                 property_age=enum_to_string(hp.property_age),
                 duration=enum_to_string(hp.duration),
-                bedrooms=lp.bedrooms if lp else None,
-                bathrooms=lp.bathrooms if lp else None,
-                epc_rating=lp.epc_rating if lp else None,
-                size=lp.size if lp else None,
+                bedrooms=extract_number(lp.bedrooms if lp else None),
+                bathrooms=extract_number(lp.bathrooms if lp else None),
+                epc_rating=standardize_epc_rating(lp.epc_rating if lp else None),
+                size=standardize_size(lp.size if lp else None),
                 features=lp.features if lp else None,
                 data_source='both' if lp else 'historical',
                 listing_time=lp.listing_time if lp else None,
@@ -367,15 +471,17 @@ def merge_data_in_database():
                 listing_id=lp.id,
                 price=lp.price,
                 postal_code=lp.address,  # Assuming address in ListingProperty corresponds to postal_code
-                property_type=lp.property_type,
+                property_type=standardize_property_type(lp.property_type),  # Apply standardization here
                 date=date.today(),  # Use current date for listing properties
-                bedrooms=lp.bedrooms,
-                bathrooms=lp.bathrooms,
-                epc_rating=lp.epc_rating,
-                size=lp.size,
+                bedrooms=extract_number(lp.bedrooms),
+                bathrooms=extract_number(lp.bathrooms),
+                epc_rating=standardize_epc_rating(lp.epc_rating),
+                size=standardize_size(lp.size),
                 features=lp.features,
                 data_source='listing',
-                listing_time=lp.listing_time
+                listing_time=lp.listing_time,
+                latitude=lp.latitude,
+                longitude=lp.longitude
             )
             db.add(merged_property)
 

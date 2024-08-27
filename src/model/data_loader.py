@@ -4,6 +4,7 @@ import time
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MinMaxScaler
 
 from src.database.database import SessionLocal
 from src.database.models.processed_property import ProcessedProperty
@@ -50,11 +51,48 @@ def handle_nan_values(df):
     df = df.copy()
     for col in df.columns:
         if df[col].dtype in [np.float64, np.int64]:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
             df[col] = df[col].fillna(df[col].median())
         else:
-            # Note: This will leave all-NaN columns as NaN
             df[col] = df[col].fillna(df[col].mode().iloc[0] if not df[col].mode().empty else 'Unknown')
     return df
+
+def normalize_features(X_property, X_user):
+    scaler = MinMaxScaler()
+
+    numerical_features = ['price', 'size_sq_ft', 'latitude', 'longitude', 'epc_rating_encoded',
+                          'bedrooms', 'bathrooms', 'price_to_income_ratio', 'price_to_savings_ratio',
+                          'affordability_score', 'price_per_bedroom', 'price_per_bathroom']
+
+    # Check if X_property is not empty before normalizing
+    if not X_property.empty and all(feature in X_property.columns for feature in numerical_features):
+        # Convert to numeric, replacing non-numeric values with NaN
+        X_property[numerical_features] = X_property[numerical_features].apply(pd.to_numeric, errors='coerce')
+
+        # Fill NaN with median of each column
+        for feature in numerical_features:
+            X_property[feature] = X_property[feature].fillna(X_property[feature].median())
+
+        X_property[numerical_features] = scaler.fit_transform(X_property[numerical_features])
+    else:
+        logging.warning("X_property is empty or missing required features. Skipping normalization.")
+
+    user_numerical_features = ['income', 'savings', 'max_commute_time', 'family_size']  # Updated column names
+
+    # Check if X_user is not empty before normalizing
+    if not X_user.empty and all(feature in X_user.columns for feature in user_numerical_features):
+        # Convert to numeric, replacing non-numeric values with NaN
+        X_user[user_numerical_features] = X_user[user_numerical_features].apply(pd.to_numeric, errors='coerce')
+
+        # Fill NaN with median of each column
+        for feature in user_numerical_features:
+            X_user[feature] = X_user[feature].fillna(X_user[feature].median())
+
+        X_user[user_numerical_features] = scaler.fit_transform(X_user[user_numerical_features])
+    else:
+        logging.warning("X_user is empty or missing required features. Skipping normalization.")
+
+    return X_property, X_user
 
 def load_and_preprocess_data(sample_size=None, pairs_per_user=10):
     start_time = time.time()
@@ -81,25 +119,29 @@ def load_and_preprocess_data(sample_size=None, pairs_per_user=10):
     logging.info(f"Property data shape: {property_df.shape}")
     logging.info(f"User data shape: {user_df.shape}")
 
+    if property_df.empty or user_df.empty:
+        logging.error("No data loaded from the database. Aborting preprocessing.")
+        return None, None, None
+
     logging.info("Creating property-user pairs")
     pairs = create_property_user_pairs(property_df, user_df, pairs_per_user)
     logging.info(f"Pairs created. Shape: {pairs.shape}")
 
-    # Define property_features based on available columns
     property_features = ['price', 'size_sq_ft', 'year', 'month', 'day_of_week',
                          'has_garden', 'has_parking', 'location_Urban', 'location_Suburban', 'location_Rural',
-                         'latitude', 'longitude', 'epc_rating_encoded']
-    property_type_features = [col for col in pairs.columns if col.startswith('Property Type_')]
-    property_features.extend(property_type_features)
+                         'latitude', 'longitude', 'epc_rating_encoded',
+                         'property_type_Detached', 'property_type_Semi_Detached',
+                         'property_type_Terraced', 'property_type_Flat_Maisonette', 'property_type_Other',
+                         'bedrooms', 'bathrooms']
 
-    user_features = ['Income', 'Savings', 'MaxCommuteTime', 'FamilySize']
+    user_features = ['income', 'savings', 'max_commute_time', 'family_size']  # Updated to match database column names
 
     all_features = property_features + user_features
     missing_features = [f for f in all_features if f not in pairs.columns]
     if missing_features:
         logging.warning(f"Missing features in the data: {missing_features}")
         for feature in missing_features:
-            pairs[feature] = 0  # Add missing features with default value 0
+            pairs[feature] = 0
             logging.warning(f"Added missing feature '{feature}' with default value 0")
 
     X_property = pairs[property_features]
@@ -109,16 +151,37 @@ def load_and_preprocess_data(sample_size=None, pairs_per_user=10):
     X_property = handle_nan_values(X_property)
     X_user = handle_nan_values(X_user)
 
+    # Convert latitude and longitude to float
+    X_property['latitude'] = pd.to_numeric(X_property['latitude'], errors='coerce')
+    X_property['longitude'] = pd.to_numeric(X_property['longitude'], errors='coerce')
+
+    # Handle location features
+    X_property['location_Urban'] = X_property['location_Urban'].astype(bool)
+    X_property['location_Suburban'] = X_property['location_Suburban'].astype(bool)
+    X_property['location_Rural'] = X_property['location_Rural'].astype(bool)
+
     logging.info("Calculating affordability features")
     X_property = X_property.assign(
-        price_to_income_ratio = X_property['price'] / pairs['Income'],
-        price_to_savings_ratio = X_property['price'] / pairs['Savings'],
-        affordability_score = (pairs['Income'] * 4 + pairs['Savings']) / X_property['price']
+        price_to_income_ratio = X_property['price'] / X_user['income'].replace(0, 1),
+        price_to_savings_ratio = X_property['price'] / X_user['savings'].replace(0, 1),
+        affordability_score = (X_user['income'] * 4 + X_user['savings']) / X_property['price'].replace(0, 1),
+        price_per_bedroom = X_property['price'] / X_property['bedrooms'].replace(0, 1),
+        price_per_bathroom = X_property['price'] / X_property['bathrooms'].replace(0, 1)
     )
 
+    # Log data types
+    logging.info("Data types before normalization:")
+    logging.info(X_property.dtypes)
+    logging.info(X_user.dtypes)
+
+    logging.info("Normalizing features")
+    X_property, X_user = normalize_features(X_property, X_user)
+
     logging.info("Creating target variable")
-    # Adjust this based on your specific criteria for a suitable property
-    y = (X_property['affordability_score'] >= 1)
+    y = ((X_property['affordability_score'] >= 0.8) &  # Adjusted threshold
+         (X_property['bedrooms'] >= X_user['family_size']) &
+         (X_property['price_per_bedroom'] <= (X_user['income'] / 12)) &
+         (X_property['size_sq_ft'] >= (X_user['family_size'] * 200)))  # Added size criteria
 
     logging.info(f"Data preprocessing completed in {time.time() - start_time:.2f} seconds")
     return X_property, X_user, y
@@ -137,6 +200,10 @@ def create_property_user_pairs(property_df, user_df, pairs_per_user=10):
 def load_data(sample_size=None, pairs_per_user=10):
     X_property, X_user, y = load_and_preprocess_data(sample_size, pairs_per_user)
 
+    if X_property is None or X_user is None or y is None:
+        logging.error("Data preprocessing failed. Unable to proceed with train-test split.")
+        return None, None, None, None, None, None
+
     X_property_train, X_property_test, X_user_train, X_user_test, y_train, y_test = train_test_split(
         X_property, X_user, y, test_size=0.2, random_state=42, stratify=y)
 
@@ -148,16 +215,32 @@ if __name__ == "__main__":
 
     try:
         logging.info("Starting data loading process")
-        X_property_train, X_property_test, X_user_train, X_user_test, y_train, y_test = load_data(sample_size, pairs_per_user)
+        # First, check if we have user data
+        db = SessionLocal()
+        try:
+            user_count = db.query(SyntheticUser).count()
+            logging.info(f"Total synthetic users in database: {user_count}")
+            if user_count == 0:
+                logging.error("No synthetic user data found in the database. Please generate synthetic users first.")
+                exit(1)
+        finally:
+            db.close()
 
-        # Display information about the loaded data
-        logging.info("\nTraining set shapes:")
-        logging.info(f"X_property_train: {X_property_train.shape}")
-        logging.info(f"X_user_train: {X_user_train.shape}")
-        logging.info(f"y_train: {y_train.shape}")
+        result = load_data(sample_size, pairs_per_user)
 
-        # Inspect the data
-        inspect_data(X_property_train, X_user_train, y_train)
+        if result[0] is not None:
+            X_property_train, X_property_test, X_user_train, X_user_test, y_train, y_test = result
+
+            # Display information about the loaded data
+            logging.info("\nTraining set shapes:")
+            logging.info(f"X_property_train: {X_property_train.shape}")
+            logging.info(f"X_user_train: {X_user_train.shape}")
+            logging.info(f"y_train: {y_train.shape}")
+
+            # Inspect the data
+            inspect_data(X_property_train, X_user_train, y_train)
+        else:
+            logging.error("Data loading failed. Unable to proceed with data inspection.")
 
     except Exception as e:
         logging.error("An error occurred during data loading:", exc_info=True)

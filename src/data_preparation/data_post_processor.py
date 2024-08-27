@@ -31,11 +31,11 @@ def process_data():
             'id', 'price', 'size_sq_ft', 'year', 'month', 'day_of_week',
             'price_to_income_ratio', 'price_to_savings_ratio', 'affordability_score',
             'has_garden', 'has_parking', 'location_Urban', 'location_Suburban', 'location_Rural',
-            'latitude', 'longitude', 'epc_rating_encoded'
+            'latitude', 'longitude', 'epc_rating_encoded',
+            'property_type_Detached', 'property_type_Semi-Detached', 'property_type_Terraced',
+            'property_type_Flat/Maisonette', 'property_type_Other',
+            'bedrooms', 'bathrooms'
         ]
-
-        property_type_columns = [col for col in df.columns if col.startswith('Property Type_')]
-        final_features.extend(property_type_columns)
 
         final_features = [f for f in final_features if f in df.columns]
 
@@ -72,6 +72,12 @@ def handle_missing_values(df):
             logging.info(f"Imputing missing values in {col} with 'Unknown'")
             df[col] = df[col].fillna('Unknown')
 
+    # Handle bedrooms and bathrooms separately
+    if 'bedrooms' in df.columns:
+        df['bedrooms'] = df['bedrooms'].fillna(df['bedrooms'].median())
+    if 'bathrooms' in df.columns:
+        df['bathrooms'] = df['bathrooms'].fillna(df['bathrooms'].median())
+
     # Convert latitude and longitude to float
     df['latitude'] = pd.to_numeric(df['latitude'], errors='coerce')
     df['longitude'] = pd.to_numeric(df['longitude'], errors='coerce')
@@ -98,11 +104,15 @@ def engineer_features(df):
     # Handle EPC rating
     epc_order = ['G', 'F', 'E', 'D', 'C', 'B', 'A']
     df['epc_rating_encoded'] = df['epc_rating'].map({rating: idx for idx, rating in enumerate(epc_order)})
-    df['epc_rating_encoded'] = pd.to_numeric(df['epc_rating_encoded'], errors='coerce')
+    df['epc_rating_encoded'] = pd.to_numeric(df['epc_rating_encoded'], errors='coerce').astype('Int64')
 
     # Create binary features for garden and parking
-    df['has_garden'] = df['features'].str.contains('garden', case=False, na=False).astype(int)
-    df['has_parking'] = df['features'].str.contains('parking', case=False, na=False).astype(int)
+    df['has_garden'] = df['features'].apply(lambda x: 1 if isinstance(x, list) and any('garden' in feat.lower() for feat in x) else 0)
+    df['has_parking'] = df['features'].apply(lambda x: 1 if isinstance(x, list) and any('parking' in feat.lower() for feat in x) else 0)
+
+    # Handle bedrooms and bathrooms
+    df['bedrooms'] = pd.to_numeric(df['bedrooms'], errors='coerce')
+    df['bathrooms'] = pd.to_numeric(df['bathrooms'], errors='coerce')
 
     return df
 
@@ -111,7 +121,9 @@ def encode_categorical_variables(df):
     logging.info("Encoding categorical variables...")
 
     # One-hot encoding for Property Type
-    df = pd.get_dummies(df, columns=['property_type'], prefix='Property Type')
+    property_types = ['Detached', 'Semi-Detached', 'Terraced', 'Flat/Maisonette', 'Other']
+    for pt in property_types:
+        df[f'property_type_{pt}'] = (df['property_type'] == pt).astype(int)
 
     # Create location type columns if they don't exist
     if 'location_Urban' not in df.columns:
@@ -145,11 +157,11 @@ def store_processed_data(df, db):
         try:
             processed_property = ProcessedProperty(
                 original_id=int(row['id']),
-                price=float(row['price']),
+                price=float(row['price']) if pd.notnull(row['price']) else None,
                 size_sq_ft=float(row['size_sq_ft']) if pd.notnull(row['size_sq_ft']) else None,
-                year=int(row['year']),
-                month=int(row['month']),
-                day_of_week=int(row['day_of_week']),
+                year=int(row['year']) if pd.notnull(row['year']) else None,
+                month=int(row['month']) if pd.notnull(row['month']) else None,
+                day_of_week=int(row['day_of_week']) if pd.notnull(row['day_of_week']) else None,
                 price_to_income_ratio=float(row['price_to_income_ratio']) if pd.notnull(row['price_to_income_ratio']) else None,
                 price_to_savings_ratio=float(row['price_to_savings_ratio']) if pd.notnull(row['price_to_savings_ratio']) else None,
                 affordability_score=float(row['affordability_score']) if pd.notnull(row['affordability_score']) else None,
@@ -160,9 +172,14 @@ def store_processed_data(df, db):
                 location_Rural=bool(row['location_Rural']),
                 latitude=float(row['latitude']) if pd.notnull(row['latitude']) else None,
                 longitude=float(row['longitude']) if pd.notnull(row['longitude']) else None,
-                epc_rating_encoded=float(row['epc_rating_encoded']) if pd.notnull(row['epc_rating_encoded']) else None,
-                property_type='Unknown',
-                additional_features={col: bool(row[col]) for col in row.index if col.startswith('Property Type_')}
+                epc_rating_encoded=int(row['epc_rating_encoded']) if pd.notnull(row['epc_rating_encoded']) else None,
+                property_type_Detached=bool(row['property_type_Detached']),
+                property_type_Semi_Detached=bool(row['property_type_Semi-Detached']),
+                property_type_Terraced=bool(row['property_type_Terraced']),
+                property_type_Flat_Maisonette=bool(row['property_type_Flat/Maisonette']),
+                property_type_Other=bool(row['property_type_Other']),
+                bedrooms=int(row['bedrooms']) if pd.notnull(row['bedrooms']) else None,
+                bathrooms=int(row['bathrooms']) if pd.notnull(row['bathrooms']) else None
             )
             db.add(processed_property)
         except Exception as e:
