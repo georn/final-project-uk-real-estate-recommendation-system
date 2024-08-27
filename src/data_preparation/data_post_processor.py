@@ -31,11 +31,10 @@ def process_data():
             'id', 'price', 'size_sq_ft', 'year', 'month', 'day_of_week',
             'price_to_income_ratio', 'price_to_savings_ratio', 'affordability_score',
             'has_garden', 'has_parking', 'location_Urban', 'location_Suburban', 'location_Rural',
-            'latitude', 'longitude', 'epc_rating_encoded'
+            'latitude', 'longitude', 'epc_rating_encoded',
+            'property_type_Detached', 'property_type_Semi-Detached', 'property_type_Terraced',
+            'property_type_Flat/Maisonette', 'property_type_Other'
         ]
-
-        property_type_columns = [col for col in df.columns if col.startswith('Property Type_')]
-        final_features.extend(property_type_columns)
 
         final_features = [f for f in final_features if f in df.columns]
 
@@ -111,7 +110,9 @@ def encode_categorical_variables(df):
     logging.info("Encoding categorical variables...")
 
     # One-hot encoding for Property Type
-    df = pd.get_dummies(df, columns=['property_type'], prefix='Property Type')
+    property_types = ['Detached', 'Semi-Detached', 'Terraced', 'Flat/Maisonette', 'Other']
+    for pt in property_types:
+        df[f'property_type_{pt}'] = (df['property_type'] == pt).astype(int)
 
     # Create location type columns if they don't exist
     if 'location_Urban' not in df.columns:
@@ -161,8 +162,11 @@ def store_processed_data(df, db):
                 latitude=float(row['latitude']) if pd.notnull(row['latitude']) else None,
                 longitude=float(row['longitude']) if pd.notnull(row['longitude']) else None,
                 epc_rating_encoded=float(row['epc_rating_encoded']) if pd.notnull(row['epc_rating_encoded']) else None,
-                property_type='Unknown',
-                additional_features={col: bool(row[col]) for col in row.index if col.startswith('Property Type_')}
+                property_type_Detached=bool(row['property_type_Detached']),
+                property_type_Semi_Detached=bool(row['property_type_Semi-Detached']),
+                property_type_Terraced=bool(row['property_type_Terraced']),
+                property_type_Flat_Maisonette=bool(row['property_type_Flat/Maisonette']),
+                property_type_Other=bool(row['property_type_Other'])
             )
             db.add(processed_property)
         except Exception as e:
