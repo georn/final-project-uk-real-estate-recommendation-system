@@ -77,7 +77,7 @@ def normalize_features(X_property, X_user):
     else:
         logging.warning("X_property is empty or missing required features. Skipping normalization.")
 
-    user_numerical_features = ['Income', 'Savings', 'MaxCommuteTime', 'FamilySize']
+    user_numerical_features = ['income', 'savings', 'max_commute_time', 'family_size']  # Updated column names
 
     # Check if X_user is not empty before normalizing
     if not X_user.empty and all(feature in X_user.columns for feature in user_numerical_features):
@@ -134,7 +134,7 @@ def load_and_preprocess_data(sample_size=None, pairs_per_user=10):
                          'property_type_Terraced', 'property_type_Flat_Maisonette', 'property_type_Other',
                          'bedrooms', 'bathrooms']
 
-    user_features = ['Income', 'Savings', 'MaxCommuteTime', 'FamilySize']
+    user_features = ['income', 'savings', 'max_commute_time', 'family_size']  # Updated to match database column names
 
     all_features = property_features + user_features
     missing_features = [f for f in all_features if f not in pairs.columns]
@@ -151,11 +151,20 @@ def load_and_preprocess_data(sample_size=None, pairs_per_user=10):
     X_property = handle_nan_values(X_property)
     X_user = handle_nan_values(X_user)
 
+    # Convert latitude and longitude to float
+    X_property['latitude'] = pd.to_numeric(X_property['latitude'], errors='coerce')
+    X_property['longitude'] = pd.to_numeric(X_property['longitude'], errors='coerce')
+
+    # Handle location features
+    X_property['location_Urban'] = X_property['location_Urban'].astype(bool)
+    X_property['location_Suburban'] = X_property['location_Suburban'].astype(bool)
+    X_property['location_Rural'] = X_property['location_Rural'].astype(bool)
+
     logging.info("Calculating affordability features")
     X_property = X_property.assign(
-        price_to_income_ratio = X_property['price'] / pairs['Income'].replace(0, 1),
-        price_to_savings_ratio = X_property['price'] / pairs['Savings'].replace(0, 1),
-        affordability_score = (pairs['Income'] * 4 + pairs['Savings']) / X_property['price'].replace(0, 1),
+        price_to_income_ratio = X_property['price'] / X_user['income'].replace(0, 1),
+        price_to_savings_ratio = X_property['price'] / X_user['savings'].replace(0, 1),
+        affordability_score = (X_user['income'] * 4 + X_user['savings']) / X_property['price'].replace(0, 1),
         price_per_bedroom = X_property['price'] / X_property['bedrooms'].replace(0, 1),
         price_per_bathroom = X_property['price'] / X_property['bathrooms'].replace(0, 1)
     )
@@ -169,9 +178,10 @@ def load_and_preprocess_data(sample_size=None, pairs_per_user=10):
     X_property, X_user = normalize_features(X_property, X_user)
 
     logging.info("Creating target variable")
-    y = ((X_property['affordability_score'] >= 1) &
-         (X_property['bedrooms'] >= pairs['FamilySize']) &
-         (X_property['price_per_bedroom'] <= (pairs['Income'] / 12)))
+    y = ((X_property['affordability_score'] >= 0.8) &  # Adjusted threshold
+         (X_property['bedrooms'] >= X_user['family_size']) &
+         (X_property['price_per_bedroom'] <= (X_user['income'] / 12)) &
+         (X_property['size_sq_ft'] >= (X_user['family_size'] * 200)))  # Added size criteria
 
     logging.info(f"Data preprocessing completed in {time.time() - start_time:.2f} seconds")
     return X_property, X_user, y
