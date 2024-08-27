@@ -7,10 +7,10 @@ from tensorflow.keras.initializers import HeNormal
 def build_model(property_input_shape, user_input_shape):
     # Property input branch
     property_input = Input(shape=(property_input_shape,), name='property_input')
-    property_branch = Dense(64, activation='relu', kernel_initializer=HeNormal(), kernel_regularizer=l2(0.01))(property_input)
+    property_branch = Dense(128, activation='relu', kernel_initializer=HeNormal(), kernel_regularizer=l2(0.01))(property_input)
     property_branch = BatchNormalization()(property_branch)
     property_branch = Dropout(0.3)(property_branch)
-    property_branch = Dense(32, activation='relu', kernel_initializer=HeNormal(), kernel_regularizer=l2(0.01))(property_branch)
+    property_branch = Dense(64, activation='relu', kernel_initializer=HeNormal(), kernel_regularizer=l2(0.01))(property_branch)
     property_branch = BatchNormalization()(property_branch)
     property_branch = Dropout(0.3)(property_branch)
 

@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import logging
 import os
+from sklearn.metrics import f1_score, roc_auc_score
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -15,16 +16,23 @@ class NanTerminateCallback(Callback):
             logging.info('NaN loss encountered, terminating training')
             self.model.stop_training = True
 
+class LoggingCallback(Callback):
+    def on_epoch_end(self, epoch, logs=None):
+        logging.info(f"Epoch {epoch+1}/{self.params['epochs']}")
+        logging.info(f"Train loss: {logs['loss']:.4f}, accuracy: {logs['accuracy']:.4f}")
+        logging.info(f"Val loss: {logs['val_loss']:.4f}, val_accuracy: {logs['val_accuracy']:.4f}")
+
 def train_model(model, X_train, y_train, X_val, y_val, epochs=200, batch_size=32):
     early_stopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
     nan_terminate = NanTerminateCallback()
+    logging_callback = LoggingCallback()
 
     history = model.fit(
         X_train, y_train,
         validation_data=(X_val, y_val),
         epochs=epochs,
         batch_size=batch_size,
-        callbacks=[early_stopping, nan_terminate],
+        callbacks=[early_stopping, nan_terminate, logging_callback],
         verbose=0
     )
     return history
@@ -61,6 +69,18 @@ def plot_training_history(history):
     logging.info(f"Final validation loss: {history.history['val_loss'][-1]:.4f}")
     logging.info(f"Final training accuracy: {history.history['accuracy'][-1]:.4f}")
     logging.info(f"Final validation accuracy: {history.history['val_accuracy'][-1]:.4f}")
+
+def evaluate_model(model, X_test, y_test):
+    y_pred = model.predict(X_test)
+    y_pred_binary = (y_pred > 0.5).astype(int)
+
+    accuracy = model.evaluate(X_test, y_test)[1]
+    f1 = f1_score(y_test, y_pred_binary)
+    auc = roc_auc_score(y_test, y_pred)
+
+    logging.info(f"Test Accuracy: {accuracy:.4f}")
+    logging.info(f"F1 Score: {f1:.4f}")
+    logging.info(f"AUC: {auc:.4f}")
 
 def save_trained_model(model, save_path):
     # Create directory if it doesn't exist

@@ -85,12 +85,12 @@ def load_and_preprocess_data(sample_size=None, pairs_per_user=10):
     pairs = create_property_user_pairs(property_df, user_df, pairs_per_user)
     logging.info(f"Pairs created. Shape: {pairs.shape}")
 
-    # Define property_features based on available columns
+    # Update property_features based on the new structure
     property_features = ['price', 'size_sq_ft', 'year', 'month', 'day_of_week',
                          'has_garden', 'has_parking', 'location_Urban', 'location_Suburban', 'location_Rural',
-                         'latitude', 'longitude', 'epc_rating_encoded']
-    property_type_features = [col for col in pairs.columns if col.startswith('Property Type_')]
-    property_features.extend(property_type_features)
+                         'latitude', 'longitude', 'epc_rating_encoded',
+                         'property_type_Detached', 'property_type_Semi_Detached',
+                         'property_type_Terraced', 'property_type_Flat_Maisonette', 'property_type_Other']
 
     user_features = ['Income', 'Savings', 'MaxCommuteTime', 'FamilySize']
 
