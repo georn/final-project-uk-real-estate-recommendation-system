@@ -21,12 +21,14 @@ class ProcessedProperty(Base):
     location_Rural = Column(Boolean)
     latitude = Column(Float)
     longitude = Column(Float)
-    epc_rating_encoded = Column(Float)
+    epc_rating_encoded = Column(Integer)
     property_type_Detached = Column(Boolean)
     property_type_Semi_Detached = Column(Boolean)
     property_type_Terraced = Column(Boolean)
     property_type_Flat_Maisonette = Column(Boolean)
     property_type_Other = Column(Boolean)
+    bedrooms = Column(Integer)
+    bathrooms = Column(Integer)
 
     def __repr__(self):
         return f"<ProcessedProperty(id={self.id}, original_id={self.original_id}, price={self.price})>"
