@@ -2,7 +2,7 @@ import json
 from crawler import get_property_urls
 from scraper import scrape_property_details
 from robot_check import RobotCheck
-from tqdm.notebook import tqdm
+from tqdm import tqdm
 import time
 import sys
 import os

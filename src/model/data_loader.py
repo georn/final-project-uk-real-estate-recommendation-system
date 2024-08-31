@@ -7,10 +7,11 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
 
 from src.database.database import SessionLocal
-from src.database.models.processed_property import ProcessedProperty
-from src.database.models.synthetic_user import SyntheticUser
+from src.database.models.processed_property import ProcessedProperty, EncodedTenure
+from src.database.models.synthetic_user import SyntheticUser, TenurePreference
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
 
 def inspect_data(X_property, X_user, y):
     logging.info("Data Inspection:")
@@ -29,23 +30,28 @@ def inspect_data(X_property, X_user, y):
     logging.info("Property data inspection:")
     for column in X_property.columns:
         if X_property[column].dtype in [np.float64, np.int64]:
-            logging.info(f"Column {column} - min: {X_property[column].min():.2f}, max: {X_property[column].max():.2f}, mean: {X_property[column].mean():.2f}, std: {X_property[column].std():.2f}")
+            logging.info(
+                f"Column {column} - min: {X_property[column].min():.2f}, max: {X_property[column].max():.2f}, mean: {X_property[column].mean():.2f}, std: {X_property[column].std():.2f}")
         else:
             value_counts = X_property[column].value_counts()
-            logging.info(f"Column {column} - unique values: {len(value_counts)}, top value: {value_counts.index[0]}, top count: {value_counts.iloc[0]}")
+            logging.info(
+                f"Column {column} - unique values: {len(value_counts)}, top value: {value_counts.index[0]}, top count: {value_counts.iloc[0]}")
 
     # Inspect user data
     logging.info("User data inspection:")
     for column in X_user.columns:
         if X_user[column].dtype in [np.float64, np.int64]:
-            logging.info(f"Column {column} - min: {X_user[column].min():.2f}, max: {X_user[column].max():.2f}, mean: {X_user[column].mean():.2f}, std: {X_user[column].std():.2f}")
+            logging.info(
+                f"Column {column} - min: {X_user[column].min():.2f}, max: {X_user[column].max():.2f}, mean: {X_user[column].mean():.2f}, std: {X_user[column].std():.2f}")
         else:
             value_counts = X_user[column].value_counts()
-            logging.info(f"Column {column} - unique values: {len(value_counts)}, top value: {value_counts.index[0]}, top count: {value_counts.iloc[0]}")
+            logging.info(
+                f"Column {column} - unique values: {len(value_counts)}, top value: {value_counts.index[0]}, top count: {value_counts.iloc[0]}")
 
     # Check target variable
     logging.info(f"Target variable distribution: {np.bincount(y)}")
     logging.info(f"Target variable ratio: {y.mean():.2f}")
+
 
 def handle_nan_values(df):
     df = df.copy()
@@ -57,12 +63,13 @@ def handle_nan_values(df):
             df[col] = df[col].fillna(df[col].mode().iloc[0] if not df[col].mode().empty else 'Unknown')
     return df
 
+
 def normalize_features(X_property, X_user):
     scaler = MinMaxScaler()
 
     numerical_features = ['price', 'size_sq_ft', 'latitude', 'longitude', 'epc_rating_encoded',
                           'bedrooms', 'bathrooms', 'price_to_income_ratio', 'price_to_savings_ratio',
-                          'affordability_score', 'price_per_bedroom', 'price_per_bathroom']
+                          'affordability_score', 'price_per_bedroom', 'price_per_bathroom', 'tenure']
 
     # Check if X_property is not empty before normalizing
     if not X_property.empty and all(feature in X_property.columns for feature in numerical_features):
@@ -92,7 +99,17 @@ def normalize_features(X_property, X_user):
     else:
         logging.warning("X_user is empty or missing required features. Skipping normalization.")
 
+    # Handle epc_rating_encoded separately
+    if 'epc_rating_encoded' in X_property.columns:
+        X_property['epc_rating_encoded'] = X_property['epc_rating_encoded'].astype(float)
+        X_property['epc_rating_encoded'] = (X_property['epc_rating_encoded'] - X_property['epc_rating_encoded'].min()) / (X_property['epc_rating_encoded'].max() - X_property['epc_rating_encoded'].min())
+
+    if 'tenure_preference' in X_user.columns:
+        X_user['tenure_preference'] = X_user['tenure_preference'].map(
+            {TenurePreference.FREEHOLD: 0, TenurePreference.LEASEHOLD: 1, TenurePreference.NO_PREFERENCE: 2})
+
     return X_property, X_user
+
 
 def load_and_preprocess_data(sample_size=None, pairs_per_user=10):
     start_time = time.time()
@@ -119,6 +136,9 @@ def load_and_preprocess_data(sample_size=None, pairs_per_user=10):
     logging.info(f"Property data shape: {property_df.shape}")
     logging.info(f"User data shape: {user_df.shape}")
 
+    logging.info(f"Latitude range: {property_df['latitude'].min()} to {property_df['latitude'].max()}")
+    logging.info(f"Longitude range: {property_df['longitude'].min()} to {property_df['longitude'].max()}")
+
     if property_df.empty or user_df.empty:
         logging.error("No data loaded from the database. Aborting preprocessing.")
         return None, None, None
@@ -132,9 +152,9 @@ def load_and_preprocess_data(sample_size=None, pairs_per_user=10):
                          'latitude', 'longitude', 'epc_rating_encoded',
                          'property_type_Detached', 'property_type_Semi_Detached',
                          'property_type_Terraced', 'property_type_Flat_Maisonette', 'property_type_Other',
-                         'bedrooms', 'bathrooms']
+                         'bedrooms', 'bathrooms', 'tenure']
 
-    user_features = ['income', 'savings', 'max_commute_time', 'family_size']  # Updated to match database column names
+    user_features = ['income', 'savings', 'max_commute_time', 'family_size', 'tenure_preference']
 
     all_features = property_features + user_features
     missing_features = [f for f in all_features if f not in pairs.columns]
@@ -162,11 +182,11 @@ def load_and_preprocess_data(sample_size=None, pairs_per_user=10):
 
     logging.info("Calculating affordability features")
     X_property = X_property.assign(
-        price_to_income_ratio = X_property['price'] / X_user['income'].replace(0, 1),
-        price_to_savings_ratio = X_property['price'] / X_user['savings'].replace(0, 1),
-        affordability_score = (X_user['income'] * 4 + X_user['savings']) / X_property['price'].replace(0, 1),
-        price_per_bedroom = X_property['price'] / X_property['bedrooms'].replace(0, 1),
-        price_per_bathroom = X_property['price'] / X_property['bathrooms'].replace(0, 1)
+        price_to_income_ratio=X_property['price'] / X_user['income'].replace(0, 1),
+        price_to_savings_ratio=X_property['price'] / X_user['savings'].replace(0, 1),
+        affordability_score=(X_user['income'] * 4 + X_user['savings']) / X_property['price'].replace(0, 1),
+        price_per_bedroom=X_property['price'] / X_property['bedrooms'].replace(0, 1),
+        price_per_bathroom=X_property['price'] / X_property['bathrooms'].replace(0, 1)
     )
 
     # Log data types
@@ -178,24 +198,46 @@ def load_and_preprocess_data(sample_size=None, pairs_per_user=10):
     X_property, X_user = normalize_features(X_property, X_user)
 
     logging.info("Creating target variable")
-    y = ((X_property['affordability_score'] >= 0.8) &  # Adjusted threshold
-         (X_property['bedrooms'] >= X_user['family_size']) &
-         (X_property['price_per_bedroom'] <= (X_user['income'] / 12)) &
-         (X_property['size_sq_ft'] >= (X_user['family_size'] * 200)))  # Added size criteria
+    y = ((X_property['affordability_score'] >= 0.6) &  # Relaxed threshold
+         (X_property['bedrooms'] >= X_user['family_size'] * 0.75) &  # Allow for slightly smaller properties
+         (X_property['price_per_bedroom'] <= (X_user['income'] / 10)) &  # Relaxed income requirement
+         (X_property['size_sq_ft'] >= (X_user['family_size'] * 150)) &  # Reduced size requirement
+         ((X_property['tenure'] == X_user['tenure_preference']) | (
+                     X_user['tenure_preference'] == TenurePreference.NO_PREFERENCE.value)))  # Match tenure preference
+
+    positive_ratio = y.mean()
+    logging.info(f"Positive samples ratio: {positive_ratio:.2%}")
+
+    if positive_ratio < 0.01:  # If less than 1% positive samples
+        logging.warning("Very few positive samples. Consider relaxing matching criteria further.")
 
     logging.info(f"Data preprocessing completed in {time.time() - start_time:.2f} seconds")
     return X_property, X_user, y
 
+
 def create_property_user_pairs(property_df, user_df, pairs_per_user=10):
     pairs = []
     for _, user in user_df.iterrows():
-        user_properties = property_df.sample(n=min(pairs_per_user, len(property_df)), replace=False)
+        # Filter properties based on user's tenure preference
+        if user['tenure_preference'] == TenurePreference.FREEHOLD:
+            filtered_properties = property_df[property_df['tenure'] == EncodedTenure.FREEHOLD]
+        elif user['tenure_preference'] == TenurePreference.LEASEHOLD:
+            filtered_properties = property_df[property_df['tenure'] == EncodedTenure.LEASEHOLD]
+        else:  # NO_PREFERENCE
+            filtered_properties = property_df
+
+        # If no properties match the preference, use all properties
+        if filtered_properties.empty:
+            filtered_properties = property_df
+
+        user_properties = filtered_properties.sample(n=min(pairs_per_user, len(filtered_properties)), replace=False)
         user_dict = user.to_dict()
         for _, prop in user_properties.iterrows():
             pair = {**prop.to_dict(), **user_dict}
             pairs.append(pair)
     result = pd.DataFrame(pairs)
     return result
+
 
 def load_data(sample_size=None, pairs_per_user=10):
     X_property, X_user, y = load_and_preprocess_data(sample_size, pairs_per_user)
@@ -208,6 +250,7 @@ def load_data(sample_size=None, pairs_per_user=10):
         X_property, X_user, y, test_size=0.2, random_state=42, stratify=y)
 
     return X_property_train, X_property_test, X_user_train, X_user_test, y_train, y_test
+
 
 if __name__ == "__main__":
     sample_size = 1000

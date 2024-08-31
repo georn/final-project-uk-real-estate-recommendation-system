@@ -5,8 +5,8 @@ import pandas as pd
 from sklearn.preprocessing import StandardScaler
 
 from src.database.database import SessionLocal
-from src.database.models.merged_property import MergedProperty
-from src.database.models.processed_property import ProcessedProperty
+from src.database.models.merged_property import MergedProperty, Tenure
+from src.database.models.processed_property import ProcessedProperty, EncodedTenure
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -27,6 +27,14 @@ def process_data():
         df = encode_categorical_variables(df)
         df = scale_selected_features(df)
 
+        logging.info("EPC Rating distribution:")
+        logging.info(df['epc_rating'].value_counts())
+        logging.info("EPC Rating Encoded distribution:")
+        logging.info(df['epc_rating_encoded'].value_counts())
+
+        logging.info("Latitude and Longitude statistics:")
+        logging.info(df[['latitude', 'longitude']].describe())
+
         final_features = [
             'id', 'price', 'size_sq_ft', 'year', 'month', 'day_of_week',
             'price_to_income_ratio', 'price_to_savings_ratio', 'affordability_score',
@@ -34,7 +42,7 @@ def process_data():
             'latitude', 'longitude', 'epc_rating_encoded',
             'property_type_Detached', 'property_type_Semi-Detached', 'property_type_Terraced',
             'property_type_Flat/Maisonette', 'property_type_Other',
-            'bedrooms', 'bathrooms'
+            'bedrooms', 'bathrooms', 'tenure'
         ]
 
         final_features = [f for f in final_features if f in df.columns]
@@ -82,6 +90,12 @@ def handle_missing_values(df):
     df['latitude'] = pd.to_numeric(df['latitude'], errors='coerce')
     df['longitude'] = pd.to_numeric(df['longitude'], errors='coerce')
 
+    # Handle missing latitude and longitude
+    if df['latitude'].isnull().sum() > 0 or df['longitude'].isnull().sum() > 0:
+        logging.info("Imputing missing latitude and longitude with median")
+        df['latitude'] = df['latitude'].fillna(df['latitude'].median())
+        df['longitude'] = df['longitude'].fillna(df['longitude'].median())
+
     return df
 
 def engineer_features(df):
@@ -103,7 +117,9 @@ def engineer_features(df):
 
     # Handle EPC rating
     epc_order = ['G', 'F', 'E', 'D', 'C', 'B', 'A']
-    df['epc_rating_encoded'] = df['epc_rating'].map({rating: idx for idx, rating in enumerate(epc_order)})
+    df['epc_rating'] = df['epc_rating'].fillna('Unknown')  # Handle empty values
+    df['epc_rating_encoded'] = df['epc_rating'].map({rating: idx for idx, rating in enumerate(epc_order, start=1)})
+    df['epc_rating_encoded'] = df['epc_rating_encoded'].fillna(0)  # 'Unknown' or invalid ratings become 0
     df['epc_rating_encoded'] = pd.to_numeric(df['epc_rating_encoded'], errors='coerce').astype('Int64')
 
     # Create binary features for garden and parking
@@ -132,6 +148,14 @@ def encode_categorical_variables(df):
         df['location_Suburban'] = 0
     if 'location_Rural' not in df.columns:
         df['location_Rural'] = 0
+
+    # Encode tenure
+    tenure_mapping = {
+        Tenure.FREEHOLD: EncodedTenure.FREEHOLD,
+        Tenure.LEASEHOLD: EncodedTenure.LEASEHOLD,
+        Tenure.UNKNOWN: EncodedTenure.UNKNOWN
+    }
+    df['tenure'] = df['tenure'].map(tenure_mapping)
 
     return df
 
@@ -179,7 +203,8 @@ def store_processed_data(df, db):
                 property_type_Flat_Maisonette=bool(row['property_type_Flat/Maisonette']),
                 property_type_Other=bool(row['property_type_Other']),
                 bedrooms=int(row['bedrooms']) if pd.notnull(row['bedrooms']) else None,
-                bathrooms=int(row['bathrooms']) if pd.notnull(row['bathrooms']) else None
+                bathrooms=int(row['bathrooms']) if pd.notnull(row['bathrooms']) else None,
+                tenure=EncodedTenure(row['tenure']) if pd.notnull(row['tenure']) else EncodedTenure.UNKNOWN
             )
             db.add(processed_property)
         except Exception as e:
