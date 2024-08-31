@@ -5,8 +5,8 @@ import pandas as pd
 from sklearn.preprocessing import StandardScaler
 
 from src.database.database import SessionLocal
-from src.database.models.merged_property import MergedProperty
-from src.database.models.processed_property import ProcessedProperty
+from src.database.models.merged_property import MergedProperty, Tenure
+from src.database.models.processed_property import ProcessedProperty, EncodedTenure
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -34,7 +34,7 @@ def process_data():
             'latitude', 'longitude', 'epc_rating_encoded',
             'property_type_Detached', 'property_type_Semi-Detached', 'property_type_Terraced',
             'property_type_Flat/Maisonette', 'property_type_Other',
-            'bedrooms', 'bathrooms'
+            'bedrooms', 'bathrooms', 'tenure'  # Add 'tenure' here
         ]
 
         final_features = [f for f in final_features if f in df.columns]
@@ -133,6 +133,14 @@ def encode_categorical_variables(df):
     if 'location_Rural' not in df.columns:
         df['location_Rural'] = 0
 
+    # Encode tenure
+    tenure_mapping = {
+        Tenure.FREEHOLD: EncodedTenure.FREEHOLD,
+        Tenure.LEASEHOLD: EncodedTenure.LEASEHOLD,
+        Tenure.UNKNOWN: EncodedTenure.UNKNOWN
+    }
+    df['tenure'] = df['tenure'].map(tenure_mapping)
+
     return df
 
 def scale_selected_features(df):
@@ -179,7 +187,8 @@ def store_processed_data(df, db):
                 property_type_Flat_Maisonette=bool(row['property_type_Flat/Maisonette']),
                 property_type_Other=bool(row['property_type_Other']),
                 bedrooms=int(row['bedrooms']) if pd.notnull(row['bedrooms']) else None,
-                bathrooms=int(row['bathrooms']) if pd.notnull(row['bathrooms']) else None
+                bathrooms=int(row['bathrooms']) if pd.notnull(row['bathrooms']) else None,
+                tenure=EncodedTenure(row['tenure']) if pd.notnull(row['tenure']) else EncodedTenure.UNKNOWN
             )
             db.add(processed_property)
         except Exception as e:

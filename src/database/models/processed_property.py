@@ -1,5 +1,11 @@
-from sqlalchemy import Column, Integer, Float, Boolean, ForeignKey
+from sqlalchemy import Column, Integer, Float, Boolean, ForeignKey, Enum
 from src.database.database import Base
+import enum
+
+class EncodedTenure(enum.IntEnum):
+    FREEHOLD = 0
+    LEASEHOLD = 1
+    UNKNOWN = 2
 
 class ProcessedProperty(Base):
     __tablename__ = 'processed_properties'
@@ -29,6 +35,7 @@ class ProcessedProperty(Base):
     property_type_Other = Column(Boolean)
     bedrooms = Column(Integer)
     bathrooms = Column(Integer)
+    tenure = Column(Enum(EncodedTenure))
 
     def __repr__(self):
         return f"<ProcessedProperty(id={self.id}, original_id={self.original_id}, price={self.price})>"

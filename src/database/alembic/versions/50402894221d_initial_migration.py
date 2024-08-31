@@ -1,8 +1,8 @@
 """Initial migration
 
-Revision ID: 0dc7b65df6f1
+Revision ID: 50402894221d
 Revises: 
-Create Date: 2024-08-27 11:08:30.067146
+Create Date: 2024-08-31 09:10:17.648365
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '0dc7b65df6f1'
+revision: str = '50402894221d'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -55,6 +55,7 @@ def upgrade() -> None:
     sa.Column('features', sa.JSON(), nullable=True),
     sa.Column('latitude', sa.Float(), nullable=True),
     sa.Column('longitude', sa.Float(), nullable=True),
+    sa.Column('tenure', sa.Enum('FREEHOLD', 'LEASEHOLD', 'UNKNOWN', name='tenure'), nullable=True),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('property_url')
     )
@@ -69,6 +70,7 @@ def upgrade() -> None:
     sa.Column('nice_to_have_features', sa.String(), nullable=False),
     sa.Column('max_commute_time', sa.Integer(), nullable=False),
     sa.Column('family_size', sa.Integer(), nullable=False),
+    sa.Column('tenure_preference', sa.Enum('FREEHOLD', 'LEASEHOLD', 'NO_PREFERENCE', name='tenurepreference'), nullable=False),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_synthetic_users_id'), 'synthetic_users', ['id'], unique=False)
@@ -81,7 +83,7 @@ def upgrade() -> None:
     sa.Column('property_type', sa.String(), nullable=True),
     sa.Column('date', sa.Date(), nullable=True),
     sa.Column('property_age', sa.String(), nullable=True),
-    sa.Column('duration', sa.String(), nullable=True),
+    sa.Column('tenure', sa.Enum('FREEHOLD', 'LEASEHOLD', 'UNKNOWN', name='tenure'), nullable=True),
     sa.Column('bedrooms', sa.Integer(), nullable=True),
     sa.Column('bathrooms', sa.Integer(), nullable=True),
     sa.Column('epc_rating', sa.String(), nullable=True),
@@ -122,6 +124,7 @@ def upgrade() -> None:
     sa.Column('property_type_Other', sa.Boolean(), nullable=True),
     sa.Column('bedrooms', sa.Integer(), nullable=True),
     sa.Column('bathrooms', sa.Integer(), nullable=True),
+    sa.Column('tenure', sa.Enum('FREEHOLD', 'LEASEHOLD', 'UNKNOWN', name='encodedtenure'), nullable=True),
     sa.ForeignKeyConstraint(['original_id'], ['merged_properties.id'], ),
     sa.PrimaryKeyConstraint('id')
     )

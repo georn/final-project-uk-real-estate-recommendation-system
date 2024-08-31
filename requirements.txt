@@ -125,3 +125,7 @@ Werkzeug==3.0.4
 wrapt==1.16.0
 yarl==1.9.4
 zipp==3.20.0
+
+scikit-learn~=1.5.1
+matplotlib~=3.9.2
+ratelimit~=2.2.1

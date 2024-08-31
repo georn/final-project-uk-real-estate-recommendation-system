@@ -1,7 +1,9 @@
 import numpy as np
 from sqlalchemy.orm import Session
+
 from src.database.database import SessionLocal, engine
-from src.database.models.synthetic_user import SyntheticUser, Base
+from src.database.models.synthetic_user import SyntheticUser, Base, TenurePreference
+
 
 def generate_synthetic_user_profiles(num_users=1000):
     np.random.seed(42)
@@ -13,6 +15,8 @@ def generate_synthetic_user_profiles(num_users=1000):
     nice_to_have_features = np.random.choice(['Balcony', 'Fireplace', 'Walk-in Closet', 'None'], num_users)
     commute_times = np.random.randint(10, 60, num_users)
     family_sizes = np.random.randint(1, 6, num_users)
+    tenure_preferences = np.random.choice(
+        [TenurePreference.FREEHOLD, TenurePreference.LEASEHOLD, TenurePreference.NO_PREFERENCE], num_users)
 
     Base.metadata.create_all(bind=engine)
     db: Session = SessionLocal()
@@ -27,7 +31,8 @@ def generate_synthetic_user_profiles(num_users=1000):
                 must_have_features=must_have_features[i],
                 nice_to_have_features=nice_to_have_features[i],
                 max_commute_time=int(commute_times[i]),
-                family_size=int(family_sizes[i])
+                family_size=int(family_sizes[i]),
+                tenure_preference=tenure_preferences[i]
             )
             db.add(user)
 
@@ -38,6 +43,7 @@ def generate_synthetic_user_profiles(num_users=1000):
         db.rollback()
     finally:
         db.close()
+
 
 if __name__ == "__main__":
     generate_synthetic_user_profiles()

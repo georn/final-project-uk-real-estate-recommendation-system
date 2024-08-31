@@ -2,9 +2,9 @@ import argparse
 import json
 import logging
 import os
+import re
 import ssl
 import sys
-import re
 from datetime import date
 
 import certifi
@@ -23,8 +23,8 @@ from geopy.exc import GeocoderTimedOut, GeocoderQuotaExceeded
 from src.database.database import SessionLocal
 from src.database.models.historical_property import HistoricalProperty, PropertyType, PropertyAge, PropertyDuration, \
     PPDCategoryType, RecordStatus
-from src.database.models.listing_property import ListingProperty
-from src.database.models.merged_property import MergedProperty
+from src.database.models.listing_property import ListingProperty, Tenure
+from src.database.models.merged_property import MergedProperty, Tenure as MergedTenure
 
 csv_file_path = os.path.join(project_root, 'data', 'historical-data', 'buckinghamshire_2023_cleaned_data.csv')
 json_file_path = os.path.join(project_root, 'data', 'property_data_650000.json')
@@ -39,7 +39,8 @@ geopy.geocoders.options.default_ssl_context = ctx
 
 # Initialize Nominatim API and ArcGIS
 geolocator = Nominatim(user_agent="StudentDataProjectScraper/1.0 (Contact: gor5@student.london.ac.uk)", scheme='http')
-geolocator_arcgis = ArcGIS(user_agent="StudentDataProjectScraper/1.0 (Contact: gor5@student.london.ac.uk)", scheme='http')
+geolocator_arcgis = ArcGIS(user_agent="StudentDataProjectScraper/1.0 (Contact: gor5@student.london.ac.uk)",
+                           scheme='http')
 
 # Rate limiter to avoid overloading the API
 geocode = RateLimiter(geolocator.geocode, min_delay_seconds=2)
@@ -109,7 +110,8 @@ def geocode_address(address):
         # Try Nominatim first
         location = geocode(cleaned_address)
         if location:
-            logger.info(f"Nominatim geocoded '{cleaned_address}': Latitude {location.latitude}, Longitude {location.longitude}")
+            logger.info(
+                f"Nominatim geocoded '{cleaned_address}': Latitude {location.latitude}, Longitude {location.longitude}")
             return location.latitude, location.longitude
         else:
             logger.warning(f"Nominatim failed to geocode '{cleaned_address}', falling back to ArcGIS.")
@@ -117,7 +119,8 @@ def geocode_address(address):
             try:
                 location = geocode_arcgis(cleaned_address)
                 if location:
-                    logger.info(f"ArcGIS geocoded '{cleaned_address}': Latitude {location.latitude}, Longitude {location.longitude}")
+                    logger.info(
+                        f"ArcGIS geocoded '{cleaned_address}': Latitude {location.latitude}, Longitude {location.longitude}")
                     return location.latitude, location.longitude
                 else:
                     logger.warning(f"No result for '{cleaned_address}' using ArcGIS")
@@ -239,17 +242,20 @@ def standardize_property_type(property_type):
     else:
         return 'Other'
 
+
 def extract_number(value):
     if value is None:
         return None
     match = re.search(r'\d+', str(value))
     return int(match.group()) if match else None
 
+
 def standardize_epc_rating(rating):
     if rating is None:
         return None
     match = re.search(r'[A-G]', str(rating), re.IGNORECASE)
     return match.group().upper() if match else None
+
 
 def standardize_size(size):
     if size is None:
@@ -280,6 +286,19 @@ def standardize_size(size):
         sq_ft, sq_m = sq_m * 10.7639, sq_m
 
     return f"{int(sq_ft)} sq ft / {int(sq_m)} sq m"
+
+
+def extract_tenure(features):
+    if features is None:
+        return Tenure.UNKNOWN
+    for feature in features:
+        if feature.lower().startswith("tenure:"):
+            tenure = feature.split(":")[1].strip().lower()
+            if "freehold" in tenure:
+                return Tenure.FREEHOLD
+            elif "leasehold" in tenure:
+                return Tenure.LEASEHOLD
+    return Tenure.UNKNOWN
 
 
 # Read JSON, standardize price, normalize address, add source column
@@ -374,10 +393,7 @@ def process_and_insert_listing_data(file_path, skip_geocoding=False):
                 if latitude is None or longitude is None:
                     logger.warning(f"Failed to geocode address: {address}")
 
-            original_property_type = item.get('property_type')
-            # standardized_property_type = standardize_property_type(original_property_type)
-
-            # logger.info(f"Original property type: {original_property_type}, Standardized: {standardized_property_type}")
+            tenure = extract_tenure(item.get('features'))
 
             stmt = insert(ListingProperty).values(
                 property_url=item.get('property_url'),
@@ -393,7 +409,8 @@ def process_and_insert_listing_data(file_path, skip_geocoding=False):
                 size=item.get('size'),
                 features=item.get('features'),
                 latitude=latitude,
-                longitude=longitude
+                longitude=longitude,
+                tenure=tenure
             )
 
             stmt = stmt.on_conflict_do_update(
@@ -411,7 +428,8 @@ def process_and_insert_listing_data(file_path, skip_geocoding=False):
                     'size': stmt.excluded.size,
                     'features': stmt.excluded.features,
                     'latitude': stmt.excluded.latitude,
-                    'longitude': stmt.excluded.longitude
+                    'longitude': stmt.excluded.longitude,
+                    'tenure': stmt.excluded.tenure
                 }
             )
 
@@ -425,8 +443,10 @@ def process_and_insert_listing_data(file_path, skip_geocoding=False):
     finally:
         db.close()
 
+
 def enum_to_string(value):
     return value.value if hasattr(value, 'value') else value
+
 
 def merge_data_in_database():
     db = SessionLocal()
@@ -440,6 +460,16 @@ def merge_data_in_database():
             # Try to find a matching listing property
             lp = db.query(ListingProperty).filter_by(address=hp.postal_code).first()
 
+            # Determine tenure
+            if hp.duration == PropertyDuration.FREEHOLD:
+                tenure = MergedTenure.FREEHOLD
+            elif hp.duration == PropertyDuration.LEASEHOLD:
+                tenure = MergedTenure.LEASEHOLD
+            elif lp and lp.tenure != Tenure.UNKNOWN:
+                tenure = MergedTenure[lp.tenure.name]
+            else:
+                tenure = MergedTenure.UNKNOWN
+
             merged_property = MergedProperty(
                 historical_id=hp.id,
                 listing_id=lp.id if lp else None,
@@ -448,7 +478,7 @@ def merge_data_in_database():
                 property_type=standardize_property_type(enum_to_string(hp.property_type) or (lp.property_type if lp else None)),
                 date=hp.date_of_transaction,
                 property_age=enum_to_string(hp.property_age),
-                duration=enum_to_string(hp.duration),
+                tenure=tenure,
                 bedrooms=extract_number(lp.bedrooms if lp else None),
                 bathrooms=extract_number(lp.bathrooms if lp else None),
                 epc_rating=standardize_epc_rating(lp.epc_rating if lp else None),
@@ -481,7 +511,8 @@ def merge_data_in_database():
                 data_source='listing',
                 listing_time=lp.listing_time,
                 latitude=lp.latitude,
-                longitude=lp.longitude
+                longitude=lp.longitude,
+                tenure=MergedTenure[lp.tenure.name]
             )
             db.add(merged_property)
 
@@ -492,6 +523,7 @@ def merge_data_in_database():
         logger.error(f"An error occurred while merging data: {e}")
     finally:
         db.close()
+
 
 def main():
     parser = argparse.ArgumentParser(description="Process property data with optional geocoding.")

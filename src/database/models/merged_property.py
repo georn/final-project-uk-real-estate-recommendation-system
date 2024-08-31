@@ -1,6 +1,14 @@
-from sqlalchemy import Column, Integer, String, Float, Date, JSON, ForeignKey
+import enum
+
+from sqlalchemy import Column, Integer, String, Float, Date, JSON, ForeignKey, Enum
 
 from src.database.database import Base
+
+
+class Tenure(enum.Enum):
+    FREEHOLD = 'Freehold'
+    LEASEHOLD = 'Leasehold'
+    UNKNOWN = 'Unknown'
 
 
 class MergedProperty(Base):
@@ -14,7 +22,7 @@ class MergedProperty(Base):
     property_type = Column(String)
     date = Column(Date)
     property_age = Column(String)
-    duration = Column(String)
+    tenure = Column(Enum(Tenure))
     bedrooms = Column(Integer)
     bathrooms = Column(Integer)
     epc_rating = Column(String)
