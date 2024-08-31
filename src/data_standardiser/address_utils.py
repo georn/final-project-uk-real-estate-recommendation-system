@@ -5,20 +5,14 @@ def clean_address(address):
     cleaned = re.sub(r'[^\w\s,]', '', address)
     # Replace multiple spaces with a single space
     cleaned = re.sub(r'\s+', ' ', cleaned).strip()
-    # Remove any stray commas (e.g., multiple commas in a row)
+    # Remove any stray commas
     cleaned = re.sub(r',+', ',', cleaned)
+    # Remove redundant city names
+    cleaned = re.sub(r'(\w+)\s+\1', r'\1', cleaned)
     # Ensure there's a space after each comma
     cleaned = re.sub(r',(?=[^\s])', ', ', cleaned)
-    # Remove commas that are not followed by "UK" or "United Kingdom"
-    cleaned = re.sub(r',(?=\s+[^UK]|[^United Kingdom])', '', cleaned)
-    # Ensure that "UK" is treated as a single unit and not split
-    if cleaned.lower().endswith('uk'):
-        if not cleaned.endswith(', UK'):
-            cleaned = cleaned[:-2].rstrip() + ', UK'
-    elif cleaned.lower().endswith('united kingdom'):
-        if not cleaned.endswith(', United Kingdom'):
-            cleaned = cleaned[:-14].rstrip() + ', United Kingdom'
-    else:
+    # Add UK if not present
+    if not cleaned.lower().endswith(('uk', 'united kingdom')):
         cleaned += ', UK'
     # Final clean-up of any stray spaces
     cleaned = re.sub(r'\s+', ' ', cleaned).strip()

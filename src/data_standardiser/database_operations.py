@@ -3,7 +3,6 @@ import logging
 from datetime import date
 
 import pandas as pd
-
 from sqlalchemy.dialects.postgresql import insert
 
 from src.data_standardiser.data_processing import standardise_price, extract_number, standardize_epc_rating, \
@@ -13,12 +12,99 @@ from src.data_standardiser.property_utils import extract_tenure, standardize_pro
 from src.data_standardiser.utils import enum_to_string
 from src.database.database import SessionLocal
 from src.database.models.historical_property import HistoricalProperty
-from src.database.models.listing_property import ListingProperty, Tenure
-from src.database.models.merged_property import MergedProperty, Tenure as MergedTenure
 from src.database.models.historical_property import PropertyType, PropertyAge, PropertyDuration, PPDCategoryType, \
     RecordStatus
+from src.database.models.listing_property import ListingProperty, Tenure
+from src.database.models.merged_property import MergedProperty, Tenure as MergedTenure
 
 logger = logging.getLogger(__name__)
+
+from sqlalchemy import func, and_
+
+
+def update_geocoding_data(batch_size=10):
+    db = SessionLocal()
+    try:
+        # Get all listing properties without coordinates
+        listings_to_update = db.query(ListingProperty).filter(
+            (ListingProperty.latitude == None) | (ListingProperty.longitude == None)
+        ).all()
+
+        total_listings = len(listings_to_update)
+        logger.info(f"Total listings to update: {total_listings}")
+
+        for i in range(0, total_listings, batch_size):
+            batch = listings_to_update[i:i + batch_size]
+            updated_listings = []
+
+            for listing in batch:
+                latitude, longitude = geocode_address(listing.address)
+                if latitude and longitude:
+                    listing.latitude = latitude
+                    listing.longitude = longitude
+                    updated_listings.append(listing)
+                    logger.info(f"Updated geocoding for listing {listing.id}: {latitude}, {longitude}")
+
+            # Commit the batch of listing updates
+            db.commit()
+            logger.info(f"Committed batch. Processed {min(i + batch_size, total_listings)}/{total_listings} listings.")
+
+            # Update corresponding merged properties
+            if updated_listings:
+                for listing in updated_listings:
+                    db.query(MergedProperty).filter(
+                        MergedProperty.listing_id == listing.id
+                    ).update({
+                        MergedProperty.latitude: listing.latitude,
+                        MergedProperty.longitude: listing.longitude
+                    })
+                db.commit()
+                logger.info(f"Updated {len(updated_listings)} corresponding merged properties.")
+
+        # Handle merged properties without a listing or where listing update failed
+        merged_to_update = db.query(MergedProperty).filter(
+            (MergedProperty.latitude == None) | (MergedProperty.longitude == None)
+        ).all()
+
+        total_merged = len(merged_to_update)
+        logger.info(f"Remaining merged properties to update: {total_merged}")
+
+        for i, merged in enumerate(merged_to_update):
+            latitude, longitude = geocode_address(merged.postal_code)
+            if latitude and longitude:
+                merged.latitude = latitude
+                merged.longitude = longitude
+                logger.info(f"Geocoded merged property {merged.id}: {latitude}, {longitude}")
+
+            if (i + 1) % batch_size == 0 or i == total_merged - 1:
+                db.commit()
+                logger.info(f"Committed batch. Processed {i + 1}/{total_merged} remaining merged properties.")
+
+        # Final commit to ensure all changes are saved
+        db.commit()
+        logger.info("Geocoding update completed.")
+
+        # Log the final counts
+        listing_count = db.query(func.count(ListingProperty.id)).scalar()
+        listing_with_coords = db.query(func.count(ListingProperty.id)).filter(
+            ListingProperty.latitude != None,
+            ListingProperty.longitude != None
+        ).scalar()
+        merged_count = db.query(func.count(MergedProperty.id)).scalar()
+        merged_with_coords = db.query(func.count(MergedProperty.id)).filter(
+            MergedProperty.latitude != None,
+            MergedProperty.longitude != None
+        ).scalar()
+
+        logger.info(f"Final counts - Listings: {listing_with_coords}/{listing_count} have coordinates")
+        logger.info(f"Final counts - Merged Properties: {merged_with_coords}/{merged_count} have coordinates")
+
+    except Exception as e:
+        db.rollback()
+        logger.error(f"An error occurred while updating geocoding data: {e}")
+    finally:
+        db.close()
+
 
 def process_and_insert_historical_data(file_path):
     df = pd.read_csv(file_path)
@@ -75,6 +161,7 @@ def process_and_insert_historical_data(file_path):
         logger.error(f"An error occurred while processing historical data: {e}")
     finally:
         db.close()
+
 
 def process_and_insert_listing_data(file_path, skip_geocoding=False):
     with open(file_path, 'r') as file:
@@ -139,6 +226,7 @@ def process_and_insert_listing_data(file_path, skip_geocoding=False):
         logger.error(f"An error occurred while processing listing data: {e}")
     finally:
         db.close()
+
 
 def merge_data_in_database():
     db = SessionLocal()
@@ -216,4 +304,3 @@ def merge_data_in_database():
         logger.error(f"An error occurred while merging data: {e}")
     finally:
         db.close()
-

@@ -3,6 +3,8 @@ import os
 import ssl
 import time
 import urllib.parse
+import json
+import requests
 
 import certifi
 import geopy
@@ -29,11 +31,13 @@ geocode_arcgis = RateLimiter(geolocator_arcgis.geocode, min_delay_seconds=2)
 logger = logging.getLogger(__name__)
 geocoding_cache = {}
 
-
 def geocode_address(address):
     cleaned_address = clean_address(address)
+
+    # Check if the address is in the cache
     if cleaned_address in geocoding_cache:
         return geocoding_cache[cleaned_address]
+
     for attempt in range(3):  # Try up to 3 times
         try:
             # Try Nominatim first
@@ -45,6 +49,7 @@ def geocode_address(address):
             if location:
                 logger.info(
                     f"Nominatim geocoded '{cleaned_address}': Latitude {location.latitude}, Longitude {location.longitude}")
+                geocoding_cache[cleaned_address] = (location.latitude, location.longitude)
                 return location.latitude, location.longitude
             else:
                 logger.warning(f"Nominatim failed to geocode '{cleaned_address}', falling back to ArcGIS.")
@@ -53,13 +58,23 @@ def geocode_address(address):
                 logger.info(f"Attempting ArcGIS geocoding (Attempt {attempt + 1}/3)")
                 logger.info(f"ArcGIS Request URL: {arcgis_url}")
 
-                location = geocode_arcgis(cleaned_address)
-                if location:
-                    logger.info(
-                        f"ArcGIS geocoded '{cleaned_address}': Latitude {location.latitude}, Longitude {location.longitude}")
-                    return location.latitude, location.longitude
+                response = requests.get(arcgis_url)
+                logger.info(f"ArcGIS response: {response.text}")  # Log full response
+                if response.status_code == 200:
+                    data = json.loads(response.text)
+                    candidates = data.get('candidates', [])
+                    if candidates:
+                        top_candidate = candidates[0]
+                        latitude = top_candidate['location']['y']
+                        longitude = top_candidate['location']['x']
+                        logger.info(f"ArcGIS geocoded '{cleaned_address}': Latitude {latitude}, Longitude {longitude}")
+                        geocoding_cache[cleaned_address] = (latitude, longitude)
+                        return latitude, longitude
+                    else:
+                        logger.warning(f"No result for '{cleaned_address}' using ArcGIS")
                 else:
-                    logger.warning(f"No result for '{cleaned_address}' using ArcGIS")
+                    logger.warning(f"ArcGIS request failed with status code {response.status_code}")
+
         except GeocoderQuotaExceeded:
             logger.error("Quota exceeded for geocoding API")
             return None, None
@@ -70,9 +85,10 @@ def geocode_address(address):
             logger.error(f"Error geocoding {cleaned_address}: {str(e)}")
             time.sleep(2 ** attempt)  # Exponential backoff
 
+        time.sleep(1)  # Add a 1-second delay between requests
+
     logger.error(f"Failed to geocode '{cleaned_address}' after 3 attempts")
     return None, None
-
 
 def check_preprocessed_file(file_path):
     """Check if the preprocessed file exists and has latitude and longitude."""
