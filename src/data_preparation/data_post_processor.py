@@ -7,6 +7,7 @@ from sklearn.preprocessing import StandardScaler
 from src.database.database import SessionLocal
 from src.database.models.merged_property import MergedProperty, Tenure
 from src.database.models.processed_property import ProcessedProperty, EncodedTenure
+from src.database.models.synthetic_user import SyntheticUser
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -19,21 +20,18 @@ def process_data():
         query = db.query(MergedProperty)
         df = pd.read_sql(query.statement, db.bind)
 
+        # Load synthetic user data
+        user_query = db.query(SyntheticUser)
+        user_df = pd.read_sql(user_query.statement, db.bind)
+
         logging.info("Initial dataframe info:")
         logging.info(df.info())
 
         df = handle_missing_values(df)
         df = engineer_features(df)
+        df = calculate_affordability_metrics(df, user_df)
         df = encode_categorical_variables(df)
         df = scale_selected_features(df)
-
-        logging.info("EPC Rating distribution:")
-        logging.info(df['epc_rating'].value_counts())
-        logging.info("EPC Rating Encoded distribution:")
-        logging.info(df['epc_rating_encoded'].value_counts())
-
-        logging.info("Latitude and Longitude statistics:")
-        logging.info(df[['latitude', 'longitude']].describe())
 
         final_features = [
             'id', 'price', 'size_sq_ft', 'year', 'month', 'day_of_week',
@@ -44,10 +42,6 @@ def process_data():
             'property_type_Flat/Maisonette', 'property_type_Other',
             'bedrooms', 'bathrooms', 'tenure'
         ]
-
-        final_features = [f for f in final_features if f in df.columns]
-
-        logging.info(f"Final features selected: {final_features}")
 
         df_final = df[final_features]
 
@@ -61,6 +55,20 @@ def process_data():
 
     finally:
         db.close()
+
+def calculate_affordability_metrics(df, user_df):
+    """Calculate affordability metrics using synthetic user data."""
+    logging.info("Calculating affordability metrics...")
+
+    # Calculate average income and savings from synthetic user data
+    avg_income = user_df['income'].mean()
+    avg_savings = user_df['savings'].mean()
+
+    df['price_to_income_ratio'] = df['price'] / avg_income
+    df['price_to_savings_ratio'] = df['price'] / avg_savings
+    df['affordability_score'] = (avg_income * 4 + avg_savings) / df['price']
+
+    return df
 
 def handle_missing_values(df):
     """Impute missing values in the dataframe."""
@@ -178,39 +186,34 @@ def store_processed_data(df, db):
     db.query(ProcessedProperty).delete()
 
     for _, row in df.iterrows():
-        try:
-            processed_property = ProcessedProperty(
-                original_id=int(row['id']),
-                price=float(row['price']) if pd.notnull(row['price']) else None,
-                size_sq_ft=float(row['size_sq_ft']) if pd.notnull(row['size_sq_ft']) else None,
-                year=int(row['year']) if pd.notnull(row['year']) else None,
-                month=int(row['month']) if pd.notnull(row['month']) else None,
-                day_of_week=int(row['day_of_week']) if pd.notnull(row['day_of_week']) else None,
-                price_to_income_ratio=float(row['price_to_income_ratio']) if pd.notnull(row['price_to_income_ratio']) else None,
-                price_to_savings_ratio=float(row['price_to_savings_ratio']) if pd.notnull(row['price_to_savings_ratio']) else None,
-                affordability_score=float(row['affordability_score']) if pd.notnull(row['affordability_score']) else None,
-                has_garden=bool(row['has_garden']),
-                has_parking=bool(row['has_parking']),
-                location_Urban=bool(row['location_Urban']),
-                location_Suburban=bool(row['location_Suburban']),
-                location_Rural=bool(row['location_Rural']),
-                latitude=float(row['latitude']) if pd.notnull(row['latitude']) else None,
-                longitude=float(row['longitude']) if pd.notnull(row['longitude']) else None,
-                epc_rating_encoded=int(row['epc_rating_encoded']) if pd.notnull(row['epc_rating_encoded']) else None,
-                property_type_Detached=bool(row['property_type_Detached']),
-                property_type_Semi_Detached=bool(row['property_type_Semi-Detached']),
-                property_type_Terraced=bool(row['property_type_Terraced']),
-                property_type_Flat_Maisonette=bool(row['property_type_Flat/Maisonette']),
-                property_type_Other=bool(row['property_type_Other']),
-                bedrooms=int(row['bedrooms']) if pd.notnull(row['bedrooms']) else None,
-                bathrooms=int(row['bathrooms']) if pd.notnull(row['bathrooms']) else None,
-                tenure=EncodedTenure(row['tenure']) if pd.notnull(row['tenure']) else EncodedTenure.UNKNOWN
-            )
-            db.add(processed_property)
-        except Exception as e:
-            logging.error(f"Error processing row {row['id']}: {str(e)}")
-            logging.error(f"Problematic row data: {row.to_dict()}")
-            continue
+        processed_property = ProcessedProperty(
+            original_id=int(row['id']),
+            price=float(row['price']) if pd.notnull(row['price']) else None,
+            size_sq_ft=float(row['size_sq_ft']) if pd.notnull(row['size_sq_ft']) else None,
+            year=int(row['year']) if pd.notnull(row['year']) else None,
+            month=int(row['month']) if pd.notnull(row['month']) else None,
+            day_of_week=int(row['day_of_week']) if pd.notnull(row['day_of_week']) else None,
+            price_to_income_ratio=float(row['price_to_income_ratio']) if pd.notnull(row['price_to_income_ratio']) else None,
+            price_to_savings_ratio=float(row['price_to_savings_ratio']) if pd.notnull(row['price_to_savings_ratio']) else None,
+            affordability_score=float(row['affordability_score']) if pd.notnull(row['affordability_score']) else None,
+            has_garden=bool(row['has_garden']),
+            has_parking=bool(row['has_parking']),
+            location_Urban=bool(row['location_Urban']),
+            location_Suburban=bool(row['location_Suburban']),
+            location_Rural=bool(row['location_Rural']),
+            latitude=float(row['latitude']) if pd.notnull(row['latitude']) else None,
+            longitude=float(row['longitude']) if pd.notnull(row['longitude']) else None,
+            epc_rating_encoded=int(row['epc_rating_encoded']) if pd.notnull(row['epc_rating_encoded']) else None,
+            property_type_Detached=bool(row['property_type_Detached']),
+            property_type_Semi_Detached=bool(row['property_type_Semi-Detached']),
+            property_type_Terraced=bool(row['property_type_Terraced']),
+            property_type_Flat_Maisonette=bool(row['property_type_Flat/Maisonette']),
+            property_type_Other=bool(row['property_type_Other']),
+            bedrooms=int(row['bedrooms']) if pd.notnull(row['bedrooms']) else None,
+            bathrooms=int(row['bathrooms']) if pd.notnull(row['bathrooms']) else None,
+            tenure=EncodedTenure(row['tenure']) if pd.notnull(row['tenure']) else EncodedTenure.UNKNOWN
+        )
+        db.add(processed_property)
 
     try:
         db.commit()
@@ -218,7 +221,6 @@ def store_processed_data(df, db):
     except Exception as e:
         db.rollback()
         logging.error(f"Error committing to database: {str(e)}")
-        logging.error("Detailed error information:", exc_info=True)
 
 if __name__ == "__main__":
     processed_data = process_data()

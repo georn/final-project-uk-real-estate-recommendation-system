@@ -116,28 +116,22 @@ def load_and_preprocess_data(sample_size=None, pairs_per_user=10):
 
     try:
         db = SessionLocal()
-        try:
-            logging.info("Loading property data from database")
-            property_query = db.query(ProcessedProperty)
-            if sample_size:
-                property_query = property_query.limit(sample_size)
-            property_df = pd.read_sql(property_query.statement, db.bind)
+        logging.info("Loading property data from database")
+        property_query = db.query(ProcessedProperty)
+        if sample_size:
+            property_query = property_query.limit(sample_size)
+        property_df = pd.read_sql(property_query.statement, db.bind)
 
-            logging.info("Loading user data from database")
-            user_query = db.query(SyntheticUser)
-            if sample_size:
-                user_query = user_query.limit(sample_size)
-            user_df = pd.read_sql(user_query.statement, db.bind)
-        finally:
-            db.close()
+        logging.info("Loading user data from database")
+        user_query = db.query(SyntheticUser)
+        if sample_size:
+            user_query = user_query.limit(sample_size)
+        user_df = pd.read_sql(user_query.statement, db.bind)
     finally:
         db.close()
 
     logging.info(f"Property data shape: {property_df.shape}")
     logging.info(f"User data shape: {user_df.shape}")
-
-    logging.info(f"Latitude range: {property_df['latitude'].min()} to {property_df['latitude'].max()}")
-    logging.info(f"Longitude range: {property_df['longitude'].min()} to {property_df['longitude'].max()}")
 
     if property_df.empty or user_df.empty:
         logging.error("No data loaded from the database. Aborting preprocessing.")
@@ -148,6 +142,7 @@ def load_and_preprocess_data(sample_size=None, pairs_per_user=10):
     logging.info(f"Pairs created. Shape: {pairs.shape}")
 
     property_features = ['price', 'size_sq_ft', 'year', 'month', 'day_of_week',
+                         'price_to_income_ratio', 'price_to_savings_ratio', 'affordability_score',
                          'has_garden', 'has_parking', 'location_Urban', 'location_Suburban', 'location_Rural',
                          'latitude', 'longitude', 'epc_rating_encoded',
                          'property_type_Detached', 'property_type_Semi_Detached',
@@ -156,14 +151,6 @@ def load_and_preprocess_data(sample_size=None, pairs_per_user=10):
 
     user_features = ['income', 'savings', 'max_commute_time', 'family_size', 'tenure_preference']
 
-    all_features = property_features + user_features
-    missing_features = [f for f in all_features if f not in pairs.columns]
-    if missing_features:
-        logging.warning(f"Missing features in the data: {missing_features}")
-        for feature in missing_features:
-            pairs[feature] = 0
-            logging.warning(f"Added missing feature '{feature}' with default value 0")
-
     X_property = pairs[property_features]
     X_user = pairs[user_features]
 
@@ -171,39 +158,15 @@ def load_and_preprocess_data(sample_size=None, pairs_per_user=10):
     X_property = handle_nan_values(X_property)
     X_user = handle_nan_values(X_user)
 
-    # Convert latitude and longitude to float
-    X_property['latitude'] = pd.to_numeric(X_property['latitude'], errors='coerce')
-    X_property['longitude'] = pd.to_numeric(X_property['longitude'], errors='coerce')
-
-    # Handle location features
-    X_property['location_Urban'] = X_property['location_Urban'].astype(bool)
-    X_property['location_Suburban'] = X_property['location_Suburban'].astype(bool)
-    X_property['location_Rural'] = X_property['location_Rural'].astype(bool)
-
-    logging.info("Calculating affordability features")
-    X_property = X_property.assign(
-        price_to_income_ratio=X_property['price'] / X_user['income'].replace(0, 1),
-        price_to_savings_ratio=X_property['price'] / X_user['savings'].replace(0, 1),
-        affordability_score=(X_user['income'] * 4 + X_user['savings']) / X_property['price'].replace(0, 1),
-        price_per_bedroom=X_property['price'] / X_property['bedrooms'].replace(0, 1),
-        price_per_bathroom=X_property['price'] / X_property['bathrooms'].replace(0, 1)
-    )
-
-    # Log data types
-    logging.info("Data types before normalization:")
-    logging.info(X_property.dtypes)
-    logging.info(X_user.dtypes)
-
     logging.info("Normalizing features")
     X_property, X_user = normalize_features(X_property, X_user)
 
     logging.info("Creating target variable")
-    y = ((X_property['affordability_score'] >= 0.6) &  # Relaxed threshold
-         (X_property['bedrooms'] >= X_user['family_size'] * 0.75) &  # Allow for slightly smaller properties
-         (X_property['price_per_bedroom'] <= (X_user['income'] / 10)) &  # Relaxed income requirement
-         (X_property['size_sq_ft'] >= (X_user['family_size'] * 150)) &  # Reduced size requirement
-         ((X_property['tenure'] == X_user['tenure_preference']) | (
-                     X_user['tenure_preference'] == TenurePreference.NO_PREFERENCE.value)))  # Match tenure preference
+    y = ((X_property['affordability_score'] >= 0.5) &  # Relaxed threshold
+         (X_property['bedrooms'] >= X_user['family_size'] * 0.5) &  # Allow for smaller properties
+         (X_property['price_to_income_ratio'] <= 5) &  # Relaxed income requirement
+         (X_property['size_sq_ft'] >= (X_user['family_size'] * 100)) &  # Reduced size requirement
+         ((X_property['tenure'] == X_user['tenure_preference']) | (X_user['tenure_preference'] == TenurePreference.NO_PREFERENCE.value)))
 
     positive_ratio = y.mean()
     logging.info(f"Positive samples ratio: {positive_ratio:.2%}")
