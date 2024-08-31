@@ -136,6 +136,9 @@ def load_and_preprocess_data(sample_size=None, pairs_per_user=10):
     logging.info(f"Property data shape: {property_df.shape}")
     logging.info(f"User data shape: {user_df.shape}")
 
+    logging.info(f"Latitude range: {property_df['latitude'].min()} to {property_df['latitude'].max()}")
+    logging.info(f"Longitude range: {property_df['longitude'].min()} to {property_df['longitude'].max()}")
+
     if property_df.empty or user_df.empty:
         logging.error("No data loaded from the database. Aborting preprocessing.")
         return None, None, None

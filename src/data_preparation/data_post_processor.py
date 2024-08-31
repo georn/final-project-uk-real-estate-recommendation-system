@@ -32,6 +32,9 @@ def process_data():
         logging.info("EPC Rating Encoded distribution:")
         logging.info(df['epc_rating_encoded'].value_counts())
 
+        logging.info("Latitude and Longitude statistics:")
+        logging.info(df[['latitude', 'longitude']].describe())
+
         final_features = [
             'id', 'price', 'size_sq_ft', 'year', 'month', 'day_of_week',
             'price_to_income_ratio', 'price_to_savings_ratio', 'affordability_score',
@@ -39,7 +42,7 @@ def process_data():
             'latitude', 'longitude', 'epc_rating_encoded',
             'property_type_Detached', 'property_type_Semi-Detached', 'property_type_Terraced',
             'property_type_Flat/Maisonette', 'property_type_Other',
-            'bedrooms', 'bathrooms', 'tenure'  # Add 'tenure' here
+            'bedrooms', 'bathrooms', 'tenure'
         ]
 
         final_features = [f for f in final_features if f in df.columns]
@@ -86,6 +89,12 @@ def handle_missing_values(df):
     # Convert latitude and longitude to float
     df['latitude'] = pd.to_numeric(df['latitude'], errors='coerce')
     df['longitude'] = pd.to_numeric(df['longitude'], errors='coerce')
+
+    # Handle missing latitude and longitude
+    if df['latitude'].isnull().sum() > 0 or df['longitude'].isnull().sum() > 0:
+        logging.info("Imputing missing latitude and longitude with median")
+        df['latitude'] = df['latitude'].fillna(df['latitude'].median())
+        df['longitude'] = df['longitude'].fillna(df['longitude'].median())
 
     return df
 
