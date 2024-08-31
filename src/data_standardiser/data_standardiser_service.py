@@ -5,6 +5,8 @@ import os
 import re
 import ssl
 import sys
+import time
+import urllib.parse
 from datetime import date
 
 import certifi
@@ -32,6 +34,11 @@ json_file_path = os.path.join(project_root, 'data', 'property_data_650000.json')
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+file_handler = logging.FileHandler('geocoding.log')
+file_handler.setLevel(logging.INFO)
+file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+logger.addHandler(file_handler)
 
 # Disable SSL verification (not recommended for production)
 ctx = ssl.create_default_context(cafile=certifi.where())
@@ -106,17 +113,25 @@ def clean_address(address):
 
 def geocode_address(address):
     cleaned_address = clean_address(address)
-    try:
-        # Try Nominatim first
-        location = geocode(cleaned_address)
-        if location:
-            logger.info(
-                f"Nominatim geocoded '{cleaned_address}': Latitude {location.latitude}, Longitude {location.longitude}")
-            return location.latitude, location.longitude
-        else:
-            logger.warning(f"Nominatim failed to geocode '{cleaned_address}', falling back to ArcGIS.")
-            # Fallback to ArcGIS
-            try:
+    for attempt in range(3):  # Try up to 3 times
+        try:
+            # Try Nominatim first
+            nominatim_url = f"https://nominatim.openstreetmap.org/search?q={urllib.parse.quote(cleaned_address)}&format=json"
+            logger.info(f"Attempting Nominatim geocoding (Attempt {attempt + 1}/3)")
+            logger.info(f"Nominatim Request URL: {nominatim_url}")
+
+            location = geocode(cleaned_address)
+            if location:
+                logger.info(
+                    f"Nominatim geocoded '{cleaned_address}': Latitude {location.latitude}, Longitude {location.longitude}")
+                return location.latitude, location.longitude
+            else:
+                logger.warning(f"Nominatim failed to geocode '{cleaned_address}', falling back to ArcGIS.")
+                # Fallback to ArcGIS
+                arcgis_url = f"https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates?f=json&singleLine={urllib.parse.quote(cleaned_address)}"
+                logger.info(f"Attempting ArcGIS geocoding (Attempt {attempt + 1}/3)")
+                logger.info(f"ArcGIS Request URL: {arcgis_url}")
+
                 location = geocode_arcgis(cleaned_address)
                 if location:
                     logger.info(
@@ -124,19 +139,18 @@ def geocode_address(address):
                     return location.latitude, location.longitude
                 else:
                     logger.warning(f"No result for '{cleaned_address}' using ArcGIS")
-                    return None, None
-            except Exception as e:
-                logger.error(f"ArcGIS geocoding error for '{cleaned_address}': {str(e)}")
-                return None, None
-    except GeocoderQuotaExceeded:
-        logger.error("Quota exceeded for geocoding API")
-        return None, None
-    except GeocoderTimedOut:
-        logger.error("Geocoding API timed out")
-        return None, None
-    except Exception as e:
-        logger.error(f"Error geocoding {cleaned_address}: {str(e)}")
-        return None, None
+        except GeocoderQuotaExceeded:
+            logger.error("Quota exceeded for geocoding API")
+            return None, None
+        except GeocoderTimedOut:
+            logger.warning(f"Geocoding API timed out for '{cleaned_address}'. Retrying...")
+            time.sleep(2 ** attempt)  # Exponential backoff
+        except Exception as e:
+            logger.error(f"Error geocoding {cleaned_address}: {str(e)}")
+            time.sleep(2 ** attempt)  # Exponential backoff
+
+    logger.error(f"Failed to geocode '{cleaned_address}' after 3 attempts")
+    return None, None
 
 
 def check_preprocessed_file(file_path):
@@ -475,7 +489,8 @@ def merge_data_in_database():
                 listing_id=lp.id if lp else None,
                 price=hp.price or (lp.price if lp else None),
                 postal_code=hp.postal_code,
-                property_type=standardize_property_type(enum_to_string(hp.property_type) or (lp.property_type if lp else None)),
+                property_type=standardize_property_type(
+                    enum_to_string(hp.property_type) or (lp.property_type if lp else None)),
                 date=hp.date_of_transaction,
                 property_age=enum_to_string(hp.property_age),
                 tenure=tenure,
