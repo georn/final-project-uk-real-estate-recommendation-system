@@ -9,6 +9,8 @@ from src.database.models.merged_property import MergedProperty, Tenure
 from src.database.models.processed_property import ProcessedProperty, EncodedTenure
 from src.database.models.synthetic_user import SyntheticUser
 
+from src.data_preparation.location_classifier import classify_location
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def process_data():
@@ -115,19 +117,14 @@ def engineer_features(df):
     df['month'] = df['date'].dt.month
     df['day_of_week'] = df['date'].dt.dayofweek
 
-    # Add affordability features (these will be used later when combining with user data)
-    df['price_to_income_ratio'] = np.nan
-    df['price_to_savings_ratio'] = np.nan
-    df['affordability_score'] = np.nan
-
     # Extract numerical value from 'size' column
     df['size_sq_ft'] = df['size'].str.extract('(\d+)').astype(float)
 
     # Handle EPC rating
     epc_order = ['G', 'F', 'E', 'D', 'C', 'B', 'A']
-    df['epc_rating'] = df['epc_rating'].fillna('Unknown')  # Handle empty values
+    df['epc_rating'] = df['epc_rating'].fillna('Unknown')
     df['epc_rating_encoded'] = df['epc_rating'].map({rating: idx for idx, rating in enumerate(epc_order, start=1)})
-    df['epc_rating_encoded'] = df['epc_rating_encoded'].fillna(0)  # 'Unknown' or invalid ratings become 0
+    df['epc_rating_encoded'] = df['epc_rating_encoded'].fillna(0)
     df['epc_rating_encoded'] = pd.to_numeric(df['epc_rating_encoded'], errors='coerce').astype('Int64')
 
     # Create binary features for garden and parking
@@ -137,6 +134,12 @@ def engineer_features(df):
     # Handle bedrooms and bathrooms
     df['bedrooms'] = pd.to_numeric(df['bedrooms'], errors='coerce')
     df['bathrooms'] = pd.to_numeric(df['bathrooms'], errors='coerce')
+
+    # Classify locations
+    df[['location_Urban', 'location_Suburban', 'location_Rural']] = df.apply(
+        lambda row: pd.Series(classify_location(row['latitude'], row['longitude'])),
+        axis=1
+    )
 
     return df
 
