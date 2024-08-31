@@ -27,6 +27,11 @@ def process_data():
         df = encode_categorical_variables(df)
         df = scale_selected_features(df)
 
+        logging.info("EPC Rating distribution:")
+        logging.info(df['epc_rating'].value_counts())
+        logging.info("EPC Rating Encoded distribution:")
+        logging.info(df['epc_rating_encoded'].value_counts())
+
         final_features = [
             'id', 'price', 'size_sq_ft', 'year', 'month', 'day_of_week',
             'price_to_income_ratio', 'price_to_savings_ratio', 'affordability_score',
@@ -103,7 +108,9 @@ def engineer_features(df):
 
     # Handle EPC rating
     epc_order = ['G', 'F', 'E', 'D', 'C', 'B', 'A']
-    df['epc_rating_encoded'] = df['epc_rating'].map({rating: idx for idx, rating in enumerate(epc_order)})
+    df['epc_rating'] = df['epc_rating'].fillna('Unknown')  # Handle empty values
+    df['epc_rating_encoded'] = df['epc_rating'].map({rating: idx for idx, rating in enumerate(epc_order, start=1)})
+    df['epc_rating_encoded'] = df['epc_rating_encoded'].fillna(0)  # 'Unknown' or invalid ratings become 0
     df['epc_rating_encoded'] = pd.to_numeric(df['epc_rating_encoded'], errors='coerce').astype('Int64')
 
     # Create binary features for garden and parking

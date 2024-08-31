@@ -99,6 +99,11 @@ def normalize_features(X_property, X_user):
     else:
         logging.warning("X_user is empty or missing required features. Skipping normalization.")
 
+    # Handle epc_rating_encoded separately
+    if 'epc_rating_encoded' in X_property.columns:
+        X_property['epc_rating_encoded'] = X_property['epc_rating_encoded'].astype(float)
+        X_property['epc_rating_encoded'] = (X_property['epc_rating_encoded'] - X_property['epc_rating_encoded'].min()) / (X_property['epc_rating_encoded'].max() - X_property['epc_rating_encoded'].min())
+
     if 'tenure_preference' in X_user.columns:
         X_user['tenure_preference'] = X_user['tenure_preference'].map(
             {TenurePreference.FREEHOLD: 0, TenurePreference.LEASEHOLD: 1, TenurePreference.NO_PREFERENCE: 2})
