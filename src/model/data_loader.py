@@ -1,9 +1,12 @@
 import logging
+import os
 import time
 
+import joblib
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
 
 from src.database.database import SessionLocal
 from src.database.models.processed_property import ProcessedProperty
@@ -63,6 +66,8 @@ def handle_nan_values(df):
     return df
 
     # Handle tenure preference for users
+
+
 def tenure_preference_to_int(x):
     if isinstance(x, TenurePreference):
         return x.value
@@ -260,7 +265,8 @@ def create_property_user_pairs(property_df, user_df, pairs_per_user=10):
 
         if filtered_properties.empty:
             filtered_properties = property_df
-            logging.warning(f"No matching properties found for tenure preference {user_tenure_pref}, using all properties")
+            logging.warning(
+                f"No matching properties found for tenure preference {user_tenure_pref}, using all properties")
 
         user_properties = filtered_properties.sample(n=min(pairs_per_user, len(filtered_properties)), replace=False)
         user_dict = user.to_dict()
@@ -276,6 +282,7 @@ def create_property_user_pairs(property_df, user_df, pairs_per_user=10):
 
 
 def load_data(sample_size=None, pairs_per_user=10):
+    os.makedirs('../../models/', exist_ok=True)
     X_property, X_user, y = load_and_preprocess_data(sample_size, pairs_per_user)
 
     if X_property is None or X_user is None or y is None:
@@ -285,11 +292,31 @@ def load_data(sample_size=None, pairs_per_user=10):
     X_property_train, X_property_test, X_user_train, X_user_test, y_train, y_test = train_test_split(
         X_property, X_user, y, test_size=0.2, random_state=42, stratify=y)
 
-    # Log data types
-    logging.info("X_property_train data types:")
-    logging.info(X_property_train.dtypes)
-    logging.info("X_user_train data types:")
-    logging.info(X_user_train.dtypes)
+    scaler_property = StandardScaler()
+    X_property_train = scaler_property.fit_transform(X_property_train)
+    X_property_test = scaler_property.transform(X_property_test)
+
+    scaler_user = StandardScaler()
+    X_user_train = scaler_user.fit_transform(X_user_train)
+    X_user_test = scaler_user.transform(X_user_test)
+
+    # Save the scalers
+    try:
+        joblib.dump(scaler_property, '../../models/scaler_property.joblib')
+        logging.info("Property scaler saved successfully.")
+    except Exception as e:
+        logging.error(f"Failed to save property scaler: {str(e)}")
+
+    try:
+        joblib.dump(scaler_user, '../../models/scaler_user.joblib')
+        logging.info("User scaler saved successfully.")
+    except Exception as e:
+        logging.error(f"Failed to save user scaler: {str(e)}")
+
+    # Log data types and shapes after scaling
+    logging.info("Scaled data shapes and types:")
+    logging.info(f"X_property_train shape: {X_property_train.shape}, type: {type(X_property_train)}")
+    logging.info(f"X_user_train shape: {X_user_train.shape}, type: {type(X_user_train)}")
 
     return X_property_train, X_property_test, X_user_train, X_user_test, y_train, y_test
 

@@ -1,89 +1,90 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>User Profile Collection</title>
-    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Property Preference Form</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-<form action="/submit_user_profile" method="post">
-    <h1>Enter Your Preferences</h1>
-
-    <div class="section">
-        <label for="income">Annual Income:</label>
-        <input type="number" id="income" name="income">
-    </div>
-
-    <div class="section">
-        <label for="savings">Savings/Down Payment:</label>
-        <input type="number" id="savings" name="savings">
-    </div>
-
-    <div class="section">
-        <label for="preferred_location">Preferred Location:</label>
-        <select id="preferred_location" name="preferred_location">
-            <option value="Urban">Urban</option>
-            <option value="Suburban">Suburban</option>
-            <option value="Rural">Rural</option>
-        </select>
-    </div>
-
-    <div class="section">
-        <label for="property_type">Desired Property Type:</label>
-        <select id="property_type" name="property_type">
-            <option value="Apartment">Apartment</option>
-            <option value="House">House</option>
-            <option value="Condo">Condo</option>
-        </select>
-    </div>
-
-    <div class="section">
-        <label for="must_have_features">Must-have Features:</label>
-        <div class="checkbox-group">
-            <input type="checkbox" id="garden" name="must_have_features" value="Garden">
-            <label for="garden">Garden</label>
-
-            <input type="checkbox" id="parking" name="must_have_features" value="Parking">
-            <label for="parking">Parking</label>
-
-            <input type="checkbox" id="pool" name="must_have_features" value="Swimming Pool">
-            <label for="pool">Swimming Pool</label>
-
-            <input type="checkbox" id="gym" name="must_have_features" value="Gym">
-            <label for="gym">Gym</label>
-
-            <input type="checkbox" id="none_must" name="must_have_features" value="None">
-            <label for="none_must">None</label>
+<div class="container">
+    <h1>Enter Your Property Preferences</h1>
+    <form action="{{ url_for('submit_user_profile') }}" method="post">
+        <div class="section">
+            <label for="income">Annual Income (£):</label>
+            <input type="number" id="income" name="income" required>
         </div>
-    </div>
 
-    <div class="section">
-        <label for="nice_to_have_features">Nice-to-have Features:</label>
-        <div class="checkbox-group">
-            <input type="checkbox" id="balcony" name="nice_to_have_features" value="Balcony">
-            <label for="balcony">Balcony</label>
-
-            <input type="checkbox" id="fireplace" name="nice_to_have_features" value="Fireplace">
-            <label for="fireplace">Fireplace</label>
-
-            <input type="checkbox" id="walkin_closet" name="nice_to_have_features" value="Walk-in Closet">
-            <label for="walkin_closet">Walk-in Closet</label>
-
-            <input type="checkbox" id="none_nice" name="nice_to_have_features" value="None">
-            <label for="none_nice">None</label>
+        <div class="section">
+            <label for="savings">Savings (£):</label>
+            <input type="number" id="savings" name="savings" required>
         </div>
-    </div>
 
-    <div class="section">
-        <label for="commute_time">Maximum Commute Time (in minutes):</label>
-        <input type="number" id="commute_time" name="commute_time">
-    </div>
+        <div class="section">
+            <label for="preferred_location">Preferred Location:</label>
+            <select id="preferred_location" name="preferred_location" required>
+                <option value="Urban">Urban</option>
+                <option value="Suburban">Suburban</option>
+                <option value="Rural">Rural</option>
+            </select>
+        </div>
 
-    <div class="section">
-        <label for="family_size">Family Size:</label>
-        <input type="number" id="family_size" name="family_size">
-    </div>
+        <div class="section">
+            <label for="desired_property_type">Desired Property Type:</label>
+            <select id="desired_property_type" name="desired_property_type" required>
+                <option value="Detached">Detached</option>
+                <option value="Semi_Detached">Semi-Detached</option>
+                <option value="Terraced">Terraced</option>
+                <option value="Flat_Maisonette">Flat/Maisonette</option>
+                <option value="Other">Other</option>
+            </select>
+        </div>
 
-    <input type="submit" value="Submit">
-</form>
+        <div class="section">
+            <label>Must-have Features:</label>
+            <div class="checkbox-group">
+                <input type="checkbox" id="garden" name="must_have_features" value="Garden">
+                <label for="garden">Garden</label>
+                <input type="checkbox" id="parking" name="must_have_features" value="Parking">
+                <label for="parking">Parking</label>
+            </div>
+        </div>
+
+        <div class="section">
+            <label>Nice-to-have Features:</label>
+            <div class="checkbox-group">
+                <input type="checkbox" id="balcony" name="nice_to_have_features" value="Balcony">
+                <label for="balcony">Balcony</label>
+                <input type="checkbox" id="fireplace" name="nice_to_have_features" value="Fireplace">
+                <label for="fireplace">Fireplace</label>
+                <input type="checkbox" id="walk_in_closet" name="nice_to_have_features" value="Walk-in Closet">
+                <label for="walk_in_closet">Walk-in Closet</label>
+            </div>
+        </div>
+
+        <div class="section">
+            <label for="max_commute_time">Maximum Commute Time (minutes):</label>
+            <input type="number" id="max_commute_time" name="max_commute_time" required>
+        </div>
+
+        <div class="section">
+            <label for="family_size">Family Size:</label>
+            <input type="number" id="family_size" name="family_size" required>
+        </div>
+
+        <div class="section">
+            <label for="tenure_preference">Tenure Preference:</label>
+            <select id="tenure_preference" name="tenure_preference" required>
+                <option value="FREEHOLD">Freehold</option>
+                <option value="LEASEHOLD">Leasehold</option>
+                <option value="NO_PREFERENCE">No Preference</option>
+            </select>
+        </div>
+
+        <div class="section">
+            <input type="submit" value="Submit">
+        </div>
+    </form>
+</div>
 </body>
 </html>
