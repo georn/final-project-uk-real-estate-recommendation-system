@@ -22,7 +22,7 @@ def standardise_price(price):
 def standardize_epc_rating(rating):
     if rating is None:
         return None
-    match = re.search(r'[A-G]', str(rating), re.IGNORECASE)
+    match = re.search(r'\b[A-G]\b', str(rating), re.IGNORECASE)
     return match.group().upper() if match else None
 
 
@@ -38,18 +38,18 @@ def standardize_size(size):
         return None
 
     # Remove any thousands separators and extra whitespace
-    size = re.sub(r'[,\s]+', ' ', str(size)).strip()
+    size = re.sub(r'\s+', ' ', str(size)).strip()
 
     # Try to extract both sq ft and sq m values
-    match = re.search(r'(\d+(?:\.\d+)?)\s*sq\s*ft\s*/\s*(\d+(?:\.\d+)?)\s*sq\s*m', size, re.IGNORECASE)
+    match = re.search(r'([\d,]+(?:\.\d+)?)\s*sq\s*ft\s*/\s*([\d,]+(?:\.\d+)?)\s*sq\s*m', size, re.IGNORECASE)
 
     if match:
-        sq_ft, sq_m = map(float, match.groups())
+        sq_ft, sq_m = map(lambda x: float(x.replace(',', '')), match.groups())
     else:
         # If we don't have both, try to find just one and calculate the other
-        match = re.search(r'(\d+(?:\.\d+)?)\s*(sq\s*ft|sq\s*m)', size, re.IGNORECASE)
+        match = re.search(r'([\d,]+(?:\.\d+)?)\s*(sq\s*ft|sq\s*m)', size, re.IGNORECASE)
         if match:
-            value, unit = float(match.group(1)), match.group(2).lower()
+            value, unit = float(match.group(1).replace(',', '')), match.group(2).lower()
             if 'sq ft' in unit:
                 sq_ft, sq_m = value, value / 10.7639
             else:
@@ -61,7 +61,7 @@ def standardize_size(size):
     if sq_m > sq_ft:
         sq_ft, sq_m = sq_m * 10.7639, sq_m
 
-    return f"{int(sq_ft)} sq ft / {int(sq_m)} sq m"
+    return f"{round(sq_ft)} sq ft / {round(sq_m)} sq m"
 
 
 def update_date_column(df, source_column, new_date):
