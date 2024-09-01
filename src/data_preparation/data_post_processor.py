@@ -149,8 +149,20 @@ def encode_categorical_variables(df):
 
     # One-hot encoding for Property Type
     property_types = ['Detached', 'Semi-Detached', 'Terraced', 'Flat/Maisonette', 'Other']
+
+    # Create columns for each property type, initialized to 0
     for pt in property_types:
-        df[f'property_type_{pt}'] = (df['property_type'] == pt).astype(int)
+        df[f'property_type_{pt}'] = 0
+
+    # Set the appropriate column to 1 based on the property_type
+    for pt in property_types:
+        if pt == 'Flat/Maisonette':
+            df.loc[df['property_type'].isin(['Flat', 'Flat/Maisonette']), f'property_type_{pt}'] = 1
+        else:
+            df.loc[df['property_type'] == pt, f'property_type_{pt}'] = 1
+
+    # Set 'Other' for any unmatched property types
+    df.loc[df[['property_type_' + pt for pt in property_types]].sum(axis=1) == 0, 'property_type_Other'] = 1
 
     # Create location type columns if they don't exist
     if 'location_Urban' not in df.columns:
@@ -162,11 +174,11 @@ def encode_categorical_variables(df):
 
     # Encode tenure
     tenure_mapping = {
-        Tenure.FREEHOLD: EncodedTenure.FREEHOLD,
-        Tenure.LEASEHOLD: EncodedTenure.LEASEHOLD,
-        Tenure.UNKNOWN: EncodedTenure.UNKNOWN
+        'FREEHOLD': EncodedTenure.FREEHOLD,
+        'LEASEHOLD': EncodedTenure.LEASEHOLD,
+        'UNKNOWN': EncodedTenure.UNKNOWN
     }
-    df['tenure'] = df['tenure'].map(tenure_mapping)
+    df['tenure'] = df['tenure'].map(lambda x: tenure_mapping.get(x, EncodedTenure.UNKNOWN))
 
     return df
 
@@ -178,7 +190,11 @@ def scale_selected_features(df):
 
     if features_to_scale:
         scaler = StandardScaler()
-        df[features_to_scale] = scaler.fit_transform(df[features_to_scale])
+        scaled_features = scaler.fit_transform(df[features_to_scale])
+
+        # Replace the original values with the scaled values
+        for i, feature in enumerate(features_to_scale):
+            df[feature] = scaled_features[:, i]
 
     return df
 

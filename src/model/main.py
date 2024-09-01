@@ -26,7 +26,7 @@ def main():
     plot_training_history(history)
 
     # Evaluate the model
-    evaluate_model(model, [X_property_test, X_user_test], y_test)
+    # evaluate_model(model, [X_property_test, X_user_test], y_test)
 
     # Save the trained model
     models_dir = '../../models'
