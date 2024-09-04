@@ -174,9 +174,9 @@ def encode_categorical_variables(df):
 
     # Encode tenure
     tenure_mapping = {
-        'FREEHOLD': EncodedTenure.FREEHOLD,
-        'LEASEHOLD': EncodedTenure.LEASEHOLD,
-        'UNKNOWN': EncodedTenure.UNKNOWN
+        Tenure.FREEHOLD: EncodedTenure.FREEHOLD,
+        Tenure.LEASEHOLD: EncodedTenure.LEASEHOLD,
+        Tenure.UNKNOWN: EncodedTenure.UNKNOWN
     }
     df['tenure'] = df['tenure'].map(lambda x: tenure_mapping.get(x, EncodedTenure.UNKNOWN))
 
