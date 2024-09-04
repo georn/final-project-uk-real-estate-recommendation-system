@@ -162,8 +162,8 @@ def generate_recommendations(user_profile):
         else:
             logger.warning(f"Feature '{feature}' not found in property data")
 
-    filtered_predictions = predictions[mask]
     filtered_properties = property_data[mask]
+    filtered_predictions = predictions[mask]
 
     logger.info(f"Number of properties after filtering: {len(filtered_properties)}")
 
@@ -171,11 +171,21 @@ def generate_recommendations(user_profile):
         logger.warning("No properties match the user's criteria.")
         return []
 
-    # Get top 5 recommendations
-    top_indices = np.argsort(filtered_predictions.flatten())[-5:][::-1]
-    recommendations = filtered_properties.iloc[top_indices]
+    # Get recommendations that meet a certain threshold
+    prediction_threshold = 0.5  # Adjust this value based on your model's performance
+    recommended_indices = np.where(filtered_predictions > prediction_threshold)[0]
 
-    logger.info(f"Number of recommendations generated: {len(recommendations)}")
+    if len(recommended_indices) == 0:
+        logger.warning("No properties meet the recommendation threshold.")
+        return []
+
+    # Sort the recommended properties by their prediction scores
+    sorted_indices = recommended_indices[np.argsort(filtered_predictions[recommended_indices].flatten())[::-1]]
+
+    # Take up to 5 top recommendations
+    top_recommendations = filtered_properties.iloc[sorted_indices[:5]]
+
+    logger.info(f"Number of recommendations generated: {len(top_recommendations)}")
 
     # Convert to list of dictionaries for template rendering
     return recommendations.to_dict('records')
