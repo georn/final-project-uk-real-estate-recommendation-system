@@ -115,15 +115,16 @@ def prepare_features(X_property, X_user):
                                  'property_type_Flat_Maisonette', 'property_type_Other']
 
     # Handle NaN values for size_sq_ft
-    #TODO: default size value
-    median_size = X_property['size_sq_ft'].median()
-    if pd.isna(median_size):
-        default_size = 1000  # You can adjust this value based on your data
-        X_property['size_sq_ft'] = X_property['size_sq_ft'].fillna(default_size)
-        logging.info(f"Filled {X_property['size_sq_ft'].isna().sum()} missing size_sq_ft values with default: {default_size}")
-    else:
-        X_property['size_sq_ft'] = X_property['size_sq_ft'].fillna(median_size)
-        logging.info(f"Filled {X_property['size_sq_ft'].isna().sum()} missing size_sq_ft values with median: {median_size}")
+    missing_count = X_property['size_sq_ft'].isnull().sum()
+    if missing_count > 0:
+        # Use property type for more accurate imputation
+        X_property['size_sq_ft'] = X_property['size_sq_ft'].fillna(X_property.groupby('property_type')['size_sq_ft'].transform('median'))
+        still_missing = X_property['size_sq_ft'].isnull().sum()
+        if still_missing > 0:
+            overall_median = X_property['size_sq_ft'].median()
+            X_property['size_sq_ft'] = X_property['size_sq_ft'].fillna(overall_median)
+            logging.info(f"Imputed {still_missing} remaining missing size_sq_ft values with overall median: {overall_median}")
+        logging.info(f"Imputed {missing_count} missing size_sq_ft values based on property type medians")
 
     for col in numeric_property_features:
         X_property[col] = pd.to_numeric(X_property[col], errors='coerce')

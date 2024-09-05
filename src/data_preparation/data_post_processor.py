@@ -1,17 +1,18 @@
 import logging
+import re
 
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
 
+from src.data_preparation.location_classifier import classify_location
 from src.database.database import SessionLocal
 from src.database.models.merged_property import MergedProperty, Tenure
 from src.database.models.processed_property import ProcessedProperty, EncodedTenure
 from src.database.models.synthetic_user import SyntheticUser
 
-from src.data_preparation.location_classifier import classify_location
-
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
 
 def process_data():
     """Main function to process the data."""
@@ -30,10 +31,19 @@ def process_data():
         logging.info(df.info())
 
         df = handle_missing_values(df)
+        logging.info(f"After handle_missing_values - Non-null size_sq_ft: {df['size_sq_ft'].notnull().sum()}")
+
         df = engineer_features(df)
+        logging.info(f"After engineer_features - Non-null size_sq_ft: {df['size_sq_ft'].notnull().sum()}")
+
         df = calculate_affordability_metrics(df, user_df)
+        logging.info(f"After calculate_affordability_metrics - Non-null size_sq_ft: {df['size_sq_ft'].notnull().sum()}")
+
         df = encode_categorical_variables(df)
+        logging.info(f"After encode_categorical_variables - Non-null size_sq_ft: {df['size_sq_ft'].notnull().sum()}")
+
         df = scale_selected_features(df)
+        logging.info(f"After scale_selected_features - Non-null size_sq_ft: {df['size_sq_ft'].notnull().sum()}")
 
         final_features = [
             'id', 'price', 'size_sq_ft', 'year', 'month', 'day_of_week',
@@ -49,6 +59,8 @@ def process_data():
 
         logging.info("Final dataframe info:")
         logging.info(df_final.info())
+        logging.info(f"Number of rows with non-null size_sq_ft: {df_final['size_sq_ft'].notnull().sum()}")
+        logging.info(f"size_sq_ft statistics: min={df_final['size_sq_ft'].min()}, max={df_final['size_sq_ft'].max()}, mean={df_final['size_sq_ft'].mean()}, median={df_final['size_sq_ft'].median()}")
 
         # Store processed data back to database
         store_processed_data(df_final, db)
@@ -57,6 +69,7 @@ def process_data():
 
     finally:
         db.close()
+
 
 def calculate_affordability_metrics(df, user_df):
     """Calculate affordability metrics using synthetic user data."""
@@ -72,15 +85,9 @@ def calculate_affordability_metrics(df, user_df):
 
     return df
 
-#TODO: default size value
-def handle_missing_values(df):
-    """Impute missing values in the dataframe."""
-    logging.info("Handling missing values...")
 
-    # Columns to exclude from imputation
-    exclude_columns = ['id', 'listing_id', 'historical_id']
-
-    # Handle numeric columns
+def impute_numeric_columns(df, exclude_columns):
+    """Impute missing values in numeric columns using the median."""
     numeric_features = df.select_dtypes(include=['int64', 'float64']).columns
     for col in numeric_features:
         if col not in exclude_columns:
@@ -89,57 +96,133 @@ def handle_missing_values(df):
                 median_value = df[col].median()
                 df[col] = df[col].fillna(median_value)
                 logging.info(f"Imputed {missing_count} missing values in {col} with median: {median_value}")
+    return df
 
-    # Handle categorical columns
+
+def impute_categorical_columns(df, exclude_columns):
+    """Impute missing values in categorical columns with custom handling."""
     categorical_features = df.select_dtypes(include=['object']).columns
     for col in categorical_features:
         if col not in exclude_columns:
-            missing_count = df[col].isnull().sum()
+            missing_count = df[col].isnull().sum() + (df[col] == 'Size info not available').sum()
             if missing_count > 0:
-                if col == 'size':
-                    df.loc[df['size'] == 'Size info not available', 'size'] = np.nan
-                    df.loc[df['size'] == 'Size info not available', 'size'] = np.nan
-                elif col == 'features':
-                    df[col] = df[col].apply(lambda x: x if isinstance(x, list) else [])
-                    logging.info(f"Replaced {missing_count} missing values in {col} with empty list")
-                else:
-                    mode_value = df[col].mode().iloc[0] if not df[col].mode().empty else 'Unknown'
-                    df[col] = df[col].fillna(mode_value)
-                    logging.info(f"Imputed {missing_count} missing values in {col} with mode: {mode_value}")
+                df = impute_categorical_column(df, col, missing_count)
+    return df
 
-    # Handle size_sq_ft
-    df['size_sq_ft'] = df['size'].str.extract('(\d+)').astype(float)
+
+def impute_categorical_column(df, col, missing_count):
+    """Helper function to handle individual categorical columns."""
+    if col == 'size':
+        df.loc[df['size'] == 'Size info not available', 'size'] = np.nan
+    elif col == 'features':
+        df[col] = df[col].apply(lambda x: x if isinstance(x, list) else [])
+        logging.info(f"Replaced {missing_count} missing values in {col} with empty list")
+    else:
+        mode_value = df[col].mode().iloc[0] if not df[col].mode().empty else 'Unknown'
+        df[col] = df[col].fillna(mode_value)
+        logging.info(f"Imputed {missing_count} missing values in {col} with mode: {mode_value}")
+    return df
+
+
+def extract_sq_ft(size_str):
+    """Extract square footage from a string."""
+    if pd.isna(size_str) or size_str == 'Size info not available':
+        return np.nan
+    match = re.search(r'(\d+(?:\.\d+)?)\s*sq\s*ft', str(size_str))
+    result = float(match.group(1)) if match else np.nan
+    logging.debug(f"Extracted size: {result} from input: {size_str}")
+    return result
+
+
+def impute_size_and_create_sq_ft(df):
+    """Create and impute the 'size_sq_ft' column."""
+    logging.info("Starting impute_size_and_create_sq_ft function")
+    df['size_sq_ft'] = df['size'].apply(extract_sq_ft)
     missing_count = df['size_sq_ft'].isnull().sum()
+    logging.info(f"Initial missing count: {missing_count}")
+
     if missing_count > 0:
-        median_size = df['size_sq_ft'].median()
-        df['size_sq_ft'] = df['size_sq_ft'].fillna(median_size)
-        logging.info(f"Imputed {missing_count} missing size_sq_ft values with median: {median_size}")
+        logging.info("Imputing missing values...")
+        # Group by property type and bedrooms, and impute with median
+        df['size_sq_ft'] = df.groupby(['property_type', 'bedrooms'])['size_sq_ft'].transform(lambda x: x.fillna(x.median()))
 
-    # If there are still NaN values (in case median was NaN), use a default value
-    if df['size_sq_ft'].isnull().sum() > 0:
-        default_size = 1000  # You can adjust this value based on your data
-        df['size_sq_ft'] = df['size_sq_ft'].fillna(default_size)
-        logging.info(f"Imputed remaining missing size_sq_ft values with default: {default_size}")
+        still_missing = df['size_sq_ft'].isnull().sum()
+        logging.info(f"Missing after property type and bedrooms imputation: {still_missing}")
 
-    # Handle bedrooms and bathrooms separately
-    for col in ['bedrooms', 'bathrooms']:
+        if still_missing > 0:
+            # If there are still missing values, use property type median
+            df['size_sq_ft'] = df.groupby('property_type')['size_sq_ft'].transform(lambda x: x.fillna(x.median()))
+
+            final_missing = df['size_sq_ft'].isnull().sum()
+            logging.info(f"Missing after property type imputation: {final_missing}")
+
+            if final_missing > 0:
+                # If there are still missing values, use overall median
+                overall_median = df['size_sq_ft'].median()
+                if pd.notna(overall_median):
+                    df['size_sq_ft'] = df['size_sq_ft'].fillna(overall_median)
+                    logging.info(f"Imputed {final_missing} remaining missing size_sq_ft values with overall median: {overall_median}")
+                else:
+                    logging.warning("Unable to impute size_sq_ft values. All values are missing or invalid.")
+
+        logging.info(f"Extracted and imputed size_sq_ft values. {missing_count} were initially missing, {df['size_sq_ft'].isnull().sum()} remain missing.")
+
+    logging.info(f"Final size_sq_ft statistics: min={df['size_sq_ft'].min()}, max={df['size_sq_ft'].max()}, mean={df['size_sq_ft'].mean()}, median={df['size_sq_ft'].median()}")
+    return df
+
+
+def impute_specific_columns(df, columns):
+    """Impute missing values in specific columns (like bedrooms, bathrooms)."""
+    for col in columns:
         if col in df.columns:
             missing_count = df[col].isnull().sum()
             if missing_count > 0:
                 median_value = df[col].median()
                 df[col] = df[col].fillna(median_value)
                 logging.info(f"Imputed {missing_count} missing values in {col} with median: {median_value}")
+    return df
 
-    # Convert latitude and longitude to float and handle missing values
-    for col in ['latitude', 'longitude']:
+
+def impute_lat_long(df, columns):
+    """Convert latitude and longitude to float and handle missing values."""
+    for col in columns:
         df[col] = pd.to_numeric(df[col], errors='coerce')
         missing_count = df[col].isnull().sum()
         if missing_count > 0:
             median_value = df[col].median()
             df[col] = df[col].fillna(median_value)
             logging.info(f"Imputed {missing_count} missing values in {col} with median: {median_value}")
+    return df
+
+
+def handle_missing_values(df):
+    """Main function to handle missing values in the dataframe."""
+    logging.info("Handling missing values...")
+
+    # Define columns to exclude from imputation
+    exclude_columns = ['id', 'listing_id', 'historical_id']
+
+    # Handle numeric columns
+    df = impute_numeric_columns(df, exclude_columns)
+
+    # Handle categorical columns
+    df = impute_categorical_columns(df, exclude_columns)
+
+    # Handle size and create size_sq_ft
+    df = impute_size_and_create_sq_ft(df)
+
+    # Handle specific columns
+    df = impute_specific_columns(df, ['bedrooms', 'bathrooms'])
+
+    # Handle latitude and longitude
+    df = impute_lat_long(df, ['latitude', 'longitude'])
+
+    logging.info("Missing values handling completed.")
+    logging.info(f"Columns with missing values: {df.columns[df.isnull().any()].tolist()}")
+    logging.info(f"Missing value counts:\n{df.isnull().sum()}")
 
     return df
+
 
 def engineer_features(df):
     """Create new features from existing data."""
@@ -150,9 +233,6 @@ def engineer_features(df):
     df['month'] = df['date'].dt.month
     df['day_of_week'] = df['date'].dt.dayofweek
 
-    # Extract numerical value from 'size' column
-    df['size_sq_ft'] = df['size'].str.extract('(\d+)').astype(float)
-
     # Handle EPC rating
     epc_order = ['G', 'F', 'E', 'D', 'C', 'B', 'A']
     df['epc_rating'] = df['epc_rating'].fillna('Unknown')
@@ -161,8 +241,10 @@ def engineer_features(df):
     df['epc_rating_encoded'] = pd.to_numeric(df['epc_rating_encoded'], errors='coerce').astype('Int64')
 
     # Create binary features for garden and parking
-    df['has_garden'] = df['features'].apply(lambda x: 1 if isinstance(x, list) and any('garden' in feat.lower() for feat in x) else 0)
-    df['has_parking'] = df['features'].apply(lambda x: 1 if isinstance(x, list) and any('parking' in feat.lower() for feat in x) else 0)
+    df['has_garden'] = df['features'].apply(
+        lambda x: 1 if isinstance(x, list) and any('garden' in feat.lower() for feat in x) else 0)
+    df['has_parking'] = df['features'].apply(
+        lambda x: 1 if isinstance(x, list) and any('parking' in feat.lower() for feat in x) else 0)
 
     # Handle bedrooms and bathrooms
     df['bedrooms'] = pd.to_numeric(df['bedrooms'], errors='coerce')
@@ -175,6 +257,7 @@ def engineer_features(df):
     )
 
     return df
+
 
 def encode_categorical_variables(df):
     """Encode categorical variables for ML models."""
@@ -215,6 +298,7 @@ def encode_categorical_variables(df):
 
     return df
 
+
 def scale_selected_features(df):
     """Scale only selected numerical features."""
     logging.info("Scaling selected numerical features...")
@@ -231,8 +315,11 @@ def scale_selected_features(df):
 
     return df
 
+
 def store_processed_data(df, db):
     logging.info("Storing processed data in ProcessedProperty table")
+    logging.info(f"Number of rows with non-null size_sq_ft: {df['size_sq_ft'].notnull().sum()}")
+    logging.info(f"size_sq_ft statistics: min={df['size_sq_ft'].min()}, max={df['size_sq_ft'].max()}, mean={df['size_sq_ft'].mean()}, median={df['size_sq_ft'].median()}")
 
     # Clear existing data
     db.query(ProcessedProperty).delete()
@@ -245,8 +332,10 @@ def store_processed_data(df, db):
             year=int(row['year']) if pd.notnull(row['year']) else None,
             month=int(row['month']) if pd.notnull(row['month']) else None,
             day_of_week=int(row['day_of_week']) if pd.notnull(row['day_of_week']) else None,
-            price_to_income_ratio=float(row['price_to_income_ratio']) if pd.notnull(row['price_to_income_ratio']) else None,
-            price_to_savings_ratio=float(row['price_to_savings_ratio']) if pd.notnull(row['price_to_savings_ratio']) else None,
+            price_to_income_ratio=float(row['price_to_income_ratio']) if pd.notnull(
+                row['price_to_income_ratio']) else None,
+            price_to_savings_ratio=float(row['price_to_savings_ratio']) if pd.notnull(
+                row['price_to_savings_ratio']) else None,
             affordability_score=float(row['affordability_score']) if pd.notnull(row['affordability_score']) else None,
             has_garden=bool(row['has_garden']),
             has_parking=bool(row['has_parking']),
@@ -273,6 +362,7 @@ def store_processed_data(df, db):
     except Exception as e:
         db.rollback()
         logging.error(f"Error committing to database: {str(e)}")
+
 
 if __name__ == "__main__":
     processed_data = process_data()
