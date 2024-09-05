@@ -72,39 +72,72 @@ def calculate_affordability_metrics(df, user_df):
 
     return df
 
+#TODO: default size value
 def handle_missing_values(df):
     """Impute missing values in the dataframe."""
     logging.info("Handling missing values...")
 
+    # Columns to exclude from imputation
+    exclude_columns = ['id', 'listing_id', 'historical_id']
+
     # Handle numeric columns
     numeric_features = df.select_dtypes(include=['int64', 'float64']).columns
     for col in numeric_features:
-        if df[col].isnull().sum() > 0:
-            logging.info(f"Imputing missing values in {col} with median")
-            df[col] = df[col].fillna(df[col].median())
+        if col not in exclude_columns:
+            missing_count = df[col].isnull().sum()
+            if missing_count > 0:
+                median_value = df[col].median()
+                df[col] = df[col].fillna(median_value)
+                logging.info(f"Imputed {missing_count} missing values in {col} with median: {median_value}")
 
     # Handle categorical columns
     categorical_features = df.select_dtypes(include=['object']).columns
     for col in categorical_features:
-        if df[col].isnull().sum() > 0:
-            logging.info(f"Imputing missing values in {col} with 'Unknown'")
-            df[col] = df[col].fillna('Unknown')
+        if col not in exclude_columns:
+            missing_count = df[col].isnull().sum()
+            if missing_count > 0:
+                if col == 'size':
+                    df.loc[df['size'] == 'Size info not available', 'size'] = np.nan
+                    df.loc[df['size'] == 'Size info not available', 'size'] = np.nan
+                elif col == 'features':
+                    df[col] = df[col].apply(lambda x: x if isinstance(x, list) else [])
+                    logging.info(f"Replaced {missing_count} missing values in {col} with empty list")
+                else:
+                    mode_value = df[col].mode().iloc[0] if not df[col].mode().empty else 'Unknown'
+                    df[col] = df[col].fillna(mode_value)
+                    logging.info(f"Imputed {missing_count} missing values in {col} with mode: {mode_value}")
+
+    # Handle size_sq_ft
+    df['size_sq_ft'] = df['size'].str.extract('(\d+)').astype(float)
+    missing_count = df['size_sq_ft'].isnull().sum()
+    if missing_count > 0:
+        median_size = df['size_sq_ft'].median()
+        df['size_sq_ft'] = df['size_sq_ft'].fillna(median_size)
+        logging.info(f"Imputed {missing_count} missing size_sq_ft values with median: {median_size}")
+
+    # If there are still NaN values (in case median was NaN), use a default value
+    if df['size_sq_ft'].isnull().sum() > 0:
+        default_size = 1000  # You can adjust this value based on your data
+        df['size_sq_ft'] = df['size_sq_ft'].fillna(default_size)
+        logging.info(f"Imputed remaining missing size_sq_ft values with default: {default_size}")
 
     # Handle bedrooms and bathrooms separately
-    if 'bedrooms' in df.columns:
-        df['bedrooms'] = df['bedrooms'].fillna(df['bedrooms'].median())
-    if 'bathrooms' in df.columns:
-        df['bathrooms'] = df['bathrooms'].fillna(df['bathrooms'].median())
+    for col in ['bedrooms', 'bathrooms']:
+        if col in df.columns:
+            missing_count = df[col].isnull().sum()
+            if missing_count > 0:
+                median_value = df[col].median()
+                df[col] = df[col].fillna(median_value)
+                logging.info(f"Imputed {missing_count} missing values in {col} with median: {median_value}")
 
-    # Convert latitude and longitude to float
-    df['latitude'] = pd.to_numeric(df['latitude'], errors='coerce')
-    df['longitude'] = pd.to_numeric(df['longitude'], errors='coerce')
-
-    # Handle missing latitude and longitude
-    if df['latitude'].isnull().sum() > 0 or df['longitude'].isnull().sum() > 0:
-        logging.info("Imputing missing latitude and longitude with median")
-        df['latitude'] = df['latitude'].fillna(df['latitude'].median())
-        df['longitude'] = df['longitude'].fillna(df['longitude'].median())
+    # Convert latitude and longitude to float and handle missing values
+    for col in ['latitude', 'longitude']:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+        missing_count = df[col].isnull().sum()
+        if missing_count > 0:
+            median_value = df[col].median()
+            df[col] = df[col].fillna(median_value)
+            logging.info(f"Imputed {missing_count} missing values in {col} with median: {median_value}")
 
     return df
 

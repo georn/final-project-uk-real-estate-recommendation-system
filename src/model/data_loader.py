@@ -115,7 +115,15 @@ def prepare_features(X_property, X_user):
                                  'property_type_Flat_Maisonette', 'property_type_Other']
 
     # Handle NaN values for size_sq_ft
-    X_property['size_sq_ft'] = X_property['size_sq_ft'].fillna(X_property['size_sq_ft'].median())
+    #TODO: default size value
+    median_size = X_property['size_sq_ft'].median()
+    if pd.isna(median_size):
+        default_size = 1000  # You can adjust this value based on your data
+        X_property['size_sq_ft'] = X_property['size_sq_ft'].fillna(default_size)
+        logging.info(f"Filled {X_property['size_sq_ft'].isna().sum()} missing size_sq_ft values with default: {default_size}")
+    else:
+        X_property['size_sq_ft'] = X_property['size_sq_ft'].fillna(median_size)
+        logging.info(f"Filled {X_property['size_sq_ft'].isna().sum()} missing size_sq_ft values with median: {median_size}")
 
     for col in numeric_property_features:
         X_property[col] = pd.to_numeric(X_property[col], errors='coerce')
@@ -276,8 +284,14 @@ def create_property_user_pairs(property_df, user_df, pairs_per_user=10):
             pairs.append(pair)
 
     result = pd.DataFrame(pairs)
+
+
+    # Log statistics about the pairs
     logging.info(f"Created pairs shape: {result.shape}")
-    logging.info(f"Sample of created pairs:\n{result[['tenure', 'tenure_preference']].head()}")
+    logging.info(f"Unique property count: {result['id'].nunique()}")
+    logging.info(f"Unique user count: {result['income'].nunique()}")
+    logging.info(f"Sample of created pairs:\n{result[['tenure', 'tenure_preference', 'size_sq_ft']].head()}")
+
     return result
 
 

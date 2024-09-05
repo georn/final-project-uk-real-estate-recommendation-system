@@ -39,7 +39,7 @@ def cleanse_data(input_file, output_file):
     print("Data cleansing process completed successfully.")
 
 if __name__ == "__main__":
-    input_csv = 'pp-monthly-update-new-version.csv'
+    input_csv = 'pp-2023.csv'
     output_csv = 'buckinghamshire_2023_cleaned_data.csv'
     cleanse_data(input_csv, output_csv)
     print("Data cleansing completed when run as main script.")

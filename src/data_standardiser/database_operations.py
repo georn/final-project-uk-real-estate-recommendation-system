@@ -178,7 +178,12 @@ def process_and_insert_listing_data(file_path, skip_geocoding=False):
                     logger.warning(f"Failed to geocode address: {address}")
 
             tenure = extract_tenure(item.get('features'))
+            price = standardise_price(item.get('price'))
 
+            # Skip this listing if price is None
+            if price is None:
+                logger.warning(f"Skipping listing with URL {item.get('property_url')} due to missing price")
+                continue
             stmt = insert(ListingProperty).values(
                 property_url=item.get('property_url'),
                 title=item.get('title'),
