@@ -5,10 +5,16 @@ import sys
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.path.append(project_root)
 
-csv_file_path = os.path.join(project_root, 'data', 'historical-data', 'buckinghamshire_2023_cleaned_data.csv')
+csv_file_path = os.path.join(project_root, 'data', 'historical-data', 'multi_county_2023_cleaned_data.csv')
 
-json_file_path = os.path.join(project_root, 'data', 'property_data_900000.json')
-
+json_file_paths = {
+    'bedfordshire': os.path.join(project_root, 'data', 'property_data_bedfordshire_900000.json'),
+    'buckinghamshire': os.path.join(project_root, 'data', 'property_data_buckinghamshire_900000.json'),
+    'hertfordshire': os.path.join(project_root, 'data', 'property_data_hertfordshire_900000.json'),
+    'berkshire': os.path.join(project_root, 'data', 'property_data_berkshire_900000.json'),
+    'northamptonshire': os.path.join(project_root, 'data', 'property_data_northamptonshire_900000.json'),
+    'oxfordshire': os.path.join(project_root, 'data', 'property_data_oxfordshire_900000.json')
+}
 
 # Mapping for converting scraped property types to registry property types
 scraped_to_registry_property_type_mapping = {

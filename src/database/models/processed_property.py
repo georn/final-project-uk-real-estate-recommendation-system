@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Float, Boolean, ForeignKey, Enum
+from sqlalchemy import Column, Integer, Float, Boolean, ForeignKey, Enum, String
 from src.database.database import Base
 import enum
 
@@ -11,7 +11,7 @@ class ProcessedProperty(Base):
     __tablename__ = 'processed_properties'
 
     id = Column(Integer, primary_key=True, index=True)
-    original_id = Column(Integer, ForeignKey('merged_properties.id'))
+    original_id = Column(Integer)
     price = Column(Float)
     size_sq_ft = Column(Float)
     year = Column(Integer)
@@ -36,6 +36,13 @@ class ProcessedProperty(Base):
     bedrooms = Column(Integer)
     bathrooms = Column(Integer)
     tenure = Column(Enum(EncodedTenure))
+    county_buckinghamshire = Column(Boolean)
+    county_bedfordshire = Column(Boolean)
+    county_hertfordshire = Column(Boolean)
+    county_oxfordshire = Column(Boolean)
+    county_berkshire = Column(Boolean)
+    county_northamptonshire = Column(Boolean)
+    price_relative_to_county_avg = Column(Float)
 
     def __repr__(self):
         return f"<ProcessedProperty(id={self.id}, original_id={self.original_id}, price={self.price})>"

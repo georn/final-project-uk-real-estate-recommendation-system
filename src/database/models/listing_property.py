@@ -1,6 +1,8 @@
-from sqlalchemy import Column, Integer, String, Float, JSON, Enum
-from src.database.database import Base
 import enum
+
+from sqlalchemy import Column, Integer, String, Float, JSON, Enum
+
+from src.database.database import Base
 
 
 class Tenure(enum.Enum):
@@ -28,6 +30,7 @@ class ListingProperty(Base):
     latitude = Column(Float)
     longitude = Column(Float)
     tenure = Column(Enum(Tenure), default=Tenure.UNKNOWN)
+    county = Column(String)
 
     def __repr__(self):
-        return f"<ListingProperty(id={self.id}, address='{self.address}', price={self.price})>"
+        return f"<ListingProperty(id={self.id}, address='{self.address}', price={self.price}, county='{self.county}')>"

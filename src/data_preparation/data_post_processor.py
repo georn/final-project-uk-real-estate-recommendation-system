@@ -52,8 +52,12 @@ def process_data():
             'latitude', 'longitude', 'epc_rating_encoded',
             'property_type_Detached', 'property_type_Semi-Detached', 'property_type_Terraced',
             'property_type_Flat/Maisonette', 'property_type_Other',
-            'bedrooms', 'bathrooms', 'tenure'
+            'bedrooms', 'bathrooms', 'tenure', 'price_relative_to_county_avg'
         ]
+
+        # Add county-specific columns to final_features
+        county_columns = [col for col in df.columns if col.startswith('county_')]
+        final_features.extend(county_columns)
 
         df_final = df[final_features]
 
@@ -229,9 +233,19 @@ def engineer_features(df):
     logging.info("Engineering features...")
 
     df['date'] = pd.to_datetime(df['date'])
+    current_date = pd.Timestamp.now()
+
     df['year'] = df['date'].dt.year
     df['month'] = df['date'].dt.month
     df['day_of_week'] = df['date'].dt.dayofweek
+
+    # Calculate days since the property was listed/sold
+    df['days_since_date'] = (current_date - df['date']).dt.days
+
+    # Create a categorical feature for listing recency
+    df['listing_recency'] = pd.cut(df['days_since_date'],
+                                   bins=[0, 1, 7, 14, 30, 60, np.inf],
+                                   labels=['Today', 'Last Week', 'Last 2 Weeks', 'Last Month', 'Last 2 Months', 'Older'])
 
     # Handle EPC rating
     epc_order = ['G', 'F', 'E', 'D', 'C', 'B', 'A']
@@ -250,12 +264,33 @@ def engineer_features(df):
     df['bedrooms'] = pd.to_numeric(df['bedrooms'], errors='coerce')
     df['bathrooms'] = pd.to_numeric(df['bathrooms'], errors='coerce')
 
+    # Handle missing county information
+    if 'county' not in df.columns:
+        logging.warning("'county' column not found. Attempting to create it from 'district'.")
+        if 'district' in df.columns:
+            df['county'] = df['district'].fillna('Unknown')
+        else:
+            logging.warning("'district' column not found. Setting 'county' to 'Unknown'.")
+            df['county'] = 'Unknown'
+
     # Classify locations
     df[['location_Urban', 'location_Suburban', 'location_Rural']] = df.apply(
-        lambda row: pd.Series(classify_location(row['latitude'], row['longitude'])),
+        lambda row: pd.Series(classify_location(
+            row['latitude'] if pd.notnull(row['latitude']) else None,
+            row['longitude'] if pd.notnull(row['longitude']) else None,
+            row['county']
+        )),
         axis=1
     )
 
+    # One-hot encode the county
+    county_dummies = pd.get_dummies(df['county'], prefix='county')
+    df = pd.concat([df, county_dummies], axis=1)
+
+    # Calculate county-specific statistics
+    df['price_relative_to_county_avg'] = df.groupby('county')['price'].transform(lambda x: x / x.mean())
+
+    logging.info(f"Engineered features: {df.columns.tolist()}")
     return df
 
 
@@ -332,10 +367,8 @@ def store_processed_data(df, db):
             year=int(row['year']) if pd.notnull(row['year']) else None,
             month=int(row['month']) if pd.notnull(row['month']) else None,
             day_of_week=int(row['day_of_week']) if pd.notnull(row['day_of_week']) else None,
-            price_to_income_ratio=float(row['price_to_income_ratio']) if pd.notnull(
-                row['price_to_income_ratio']) else None,
-            price_to_savings_ratio=float(row['price_to_savings_ratio']) if pd.notnull(
-                row['price_to_savings_ratio']) else None,
+            price_to_income_ratio=float(row['price_to_income_ratio']) if pd.notnull(row['price_to_income_ratio']) else None,
+            price_to_savings_ratio=float(row['price_to_savings_ratio']) if pd.notnull(row['price_to_savings_ratio']) else None,
             affordability_score=float(row['affordability_score']) if pd.notnull(row['affordability_score']) else None,
             has_garden=bool(row['has_garden']),
             has_parking=bool(row['has_parking']),
@@ -352,8 +385,15 @@ def store_processed_data(df, db):
             property_type_Other=bool(row['property_type_Other']),
             bedrooms=int(row['bedrooms']) if pd.notnull(row['bedrooms']) else None,
             bathrooms=int(row['bathrooms']) if pd.notnull(row['bathrooms']) else None,
-            tenure=EncodedTenure(row['tenure']) if pd.notnull(row['tenure']) else EncodedTenure.UNKNOWN
+            tenure=EncodedTenure(row['tenure']) if pd.notnull(row['tenure']) else EncodedTenure.UNKNOWN,
+            price_relative_to_county_avg=float(row['price_relative_to_county_avg']) if pd.notnull(row['price_relative_to_county_avg']) else None
         )
+
+        # Add county-specific columns
+        for col in df.columns:
+            if col.startswith('county_'):
+                setattr(processed_property, col, bool(row[col]))
+
         db.add(processed_property)
 
     try:

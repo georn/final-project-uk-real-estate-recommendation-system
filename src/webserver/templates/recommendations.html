@@ -9,26 +9,30 @@
     <h1>Recommended Properties</h1>
     <ul class="recommendations-list">
         {% for property in recommendations %}
-        <li class="recommendation-item">
-            <div class="property-info">
-                <span class="property-label">Price:</span> £{{ "{:,.0f}".format(property.price) }}<br>
-                <span class="property-label">Size:</span> {{ property.size_sq_ft }} sq ft<br>
-                <span class="property-label">Location:</span> 
-                {% if property.location_Urban %}Urban
-                {% elif property.location_Suburban %}Suburban
-                {% elif property.location_Rural %}Rural
-                {% endif %}<br>
-                <span class="property-label">Features:</span>
-                {% if property.has_garden %}Garden, {% endif %}
-                {% if property.has_parking %}Parking{% endif %}<br>
-                <span class="property-label">Property Type:</span>
-                {% for col in property.keys() %}
-                    {% if col.startswith('Property Type_') and property[col] %}
-                        {{ col.replace('Property Type_', '') }}
+            <li class="recommendation-item">
+                <div class="property-info">
+                    <span class="property-label">Price:</span> £{{ "{:,.0f}".format(property.price) }}<br>
+                    <span class="property-label">Size:</span> {{ property.size_sq_ft }} sq ft<br>
+                    <span class="property-label">Location:</span>
+                    {% if property.location_Urban %}Urban
+                    {% elif property.location_Suburban %}Suburban
+                    {% elif property.location_Rural %}Rural
+                    {% endif %}<br>
+                    <span class="property-label">County:</span> {{ property.county }}<br>
+                    <span class="property-label">Features:</span>
+                    {% if property.has_garden %}Garden, {% endif %}
+                    {% if property.has_parking %}Parking{% endif %}<br>
+                    <span class="property-label">Property Type:</span>
+                    {% for col in property.keys() %}
+                        {% if col.startswith('property_type_') and property[col] %}
+                            {{ col.replace('property_type_', '') }}
+                        {% endif %}
+                    {% endfor %}<br>
+                    {% if property.property_url %}
+                        <span class="property-label">URL:</span> <a href="{{ property.property_url }}" target="_blank">View Property</a>
                     {% endif %}
-                {% endfor %}
-            </div>
-        </li>
+                </div>
+            </li>
         {% endfor %}
     </ul>
 </div>

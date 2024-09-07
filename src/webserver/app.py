@@ -10,6 +10,8 @@ from tensorflow.keras.models import load_model
 
 from src.database.database import DATABASE_URL
 from src.database.models.processed_property import ProcessedProperty
+from src.database.models.merged_property import MergedProperty
+from src.database.models.listing_property import ListingProperty
 
 app = Flask(__name__)
 
@@ -33,8 +35,19 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 def load_property_data():
     db = SessionLocal()
     try:
-        properties = db.query(ProcessedProperty).all()
-        return pd.DataFrame([p.__dict__ for p in properties])
+        query = db.query(ProcessedProperty, MergedProperty.listing_id, ListingProperty.property_url) \
+            .join(MergedProperty, ProcessedProperty.original_id == MergedProperty.id) \
+            .join(ListingProperty, MergedProperty.listing_id == ListingProperty.id, isouter=True)
+        result = query.all()
+
+        data = []
+        for processed, listing_id, property_url in result:
+            item = processed.__dict__
+            item['listing_id'] = listing_id
+            item['property_url'] = property_url
+            data.append(item)
+
+        return pd.DataFrame(data)
     finally:
         db.close()
 
@@ -59,7 +72,8 @@ def submit_user_profile():
         'NiceToHaveFeatures': request.form.getlist('nice_to_have_features'),
         'MaxCommuteTime': int(request.form['max_commute_time']),
         'FamilySize': int(request.form['family_size']),
-        'TenurePreference': request.form['tenure_preference']
+        'TenurePreference': request.form['tenure_preference'],
+        'PreferredCounty': request.form['preferred_county']
     }
 
     # Generate and return recommendations
@@ -108,8 +122,11 @@ def generate_recommendations(user_profile):
         'latitude', 'longitude', 'epc_rating_encoded',
         'property_type_Detached', 'property_type_Semi_Detached', 'property_type_Terraced',
         'property_type_Flat_Maisonette', 'property_type_Other',
-        'bedrooms', 'bathrooms', 'tenure'
+        'bedrooms', 'bathrooms', 'tenure', 'price_relative_to_county_avg'
     ]
+
+    county_columns = [col for col in property_data.columns if col.startswith('county_')]
+    property_features.extend(county_columns)
 
     # Ensure all required features exist in property data
     for feature in property_features:
@@ -138,6 +155,13 @@ def generate_recommendations(user_profile):
 
     # Apply filters based on user preferences
     mask = (property_data['price'] <= user_profile['Income'] * 4 + user_profile['Savings'])
+
+    # Apply county filter
+    county_column = f"county_{user_profile['PreferredCounty'].lower()}"
+    if county_column in property_data.columns:
+        mask &= (property_data[county_column] == 1)
+    else:
+        logger.warning(f"County column '{county_column}' not found in property data")
 
     # Check if location column exists before applying filter
     location_column = f"location_{user_profile['PreferredLocation']}"
@@ -172,7 +196,7 @@ def generate_recommendations(user_profile):
         return []
 
     # Get recommendations that meet a certain threshold
-    prediction_threshold = 0.5  # Adjust this value based on your model's performance
+    prediction_threshold = 0.5
     recommended_indices = np.where(filtered_predictions > prediction_threshold)[0]
 
     if len(recommended_indices) == 0:
@@ -185,10 +209,16 @@ def generate_recommendations(user_profile):
     # Take up to 5 top recommendations
     top_recommendations = filtered_properties.iloc[sorted_indices[:5]]
 
+    # Ensure property_url is included
+    if 'property_url' in top_recommendations.columns:
+        top_recommendations = top_recommendations[['price', 'size_sq_ft', 'location_Urban', 'location_Suburban', 'location_Rural', 'has_garden', 'has_parking', 'property_type_Detached', 'property_type_Semi_Detached', 'property_type_Terraced', 'property_type_Flat_Maisonette', 'property_type_Other', 'property_url']]
+    else:
+        logger.warning("property_url not found in the data")
+
     logger.info(f"Number of recommendations generated: {len(top_recommendations)}")
 
     # Convert to list of dictionaries for template rendering
-    return recommendations.to_dict('records')
+    return top_recommendations.to_dict('records')
 
 
 if __name__ == '__main__':

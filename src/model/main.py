@@ -38,9 +38,25 @@ def main():
         logging.info(f"F1 Score: {f1:.4f}")
 
         # Plot feature importance
-        feature_names = [f'property_{i}' for i in range(X_property_train.shape[1])] + \
-                        [f'user_{i}' for i in range(X_user_train.shape[1])]
-        plot_feature_importance(model, feature_names)
+        feature_names = [
+            'price', 'size_sq_ft', 'year', 'month', 'day_of_week',
+            'price_to_income_ratio', 'price_to_savings_ratio', 'affordability_score',
+            'has_garden', 'has_parking', 'location_Urban', 'location_Suburban', 'location_Rural',
+            'latitude', 'longitude', 'epc_rating_encoded',
+            'property_type_Detached', 'property_type_Semi_Detached', 'property_type_Terraced',
+            'property_type_Flat_Maisonette', 'property_type_Other',
+            'bedrooms', 'bathrooms', 'tenure', 'price_relative_to_county_avg',
+            'county_buckinghamshire', 'county_bedfordshire', 'county_hertfordshire',
+            'county_oxfordshire', 'county_berkshire', 'county_northamptonshire',
+            'log_price', 'log_size',
+            'income', 'savings', 'max_commute_time', 'family_size', 'tenure_preference'
+        ]
+        logging.info(f"Feature names: {feature_names}")
+        logging.info(f"Number of features: {len(feature_names)}")
+        logging.info(f"X_property_test shape: {X_property_test.shape}")
+        logging.info(f"X_user_test shape: {X_user_test.shape}")
+        logging.info(f"Total features: {X_property_test.shape[1] + X_user_test.shape[1]}")
+        importances = plot_feature_importance(model, [X_property_test, X_user_test], y_test, feature_names)
 
         analyze_misclassifications(model, [X_property_test, X_user_test], y_test, feature_names)
 
