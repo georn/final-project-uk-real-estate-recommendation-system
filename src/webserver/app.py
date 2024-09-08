@@ -13,6 +13,19 @@ from src.database.models.processed_property import ProcessedProperty
 from src.database.models.merged_property import MergedProperty
 from src.database.models.listing_property import ListingProperty
 
+PROPERTY_FEATURES = [
+    'price', 'size_sq_ft', 'year', 'month', 'day_of_week',
+    'price_to_income_ratio', 'price_to_savings_ratio', 'affordability_score',
+    'has_garden', 'has_parking', 'location_Urban', 'location_Suburban', 'location_Rural',
+    'latitude', 'longitude', 'epc_rating_encoded',
+    'property_type_Detached', 'property_type_Semi_Detached', 'property_type_Terraced',
+    'property_type_Flat_Maisonette', 'property_type_Other',
+    'bedrooms', 'bathrooms', 'tenure', 'price_relative_to_county_avg',
+    'county_buckinghamshire', 'county_bedfordshire', 'county_hertfordshire',
+    'county_oxfordshire', 'county_berkshire', 'county_northamptonshire',
+    'log_price', 'log_size'
+]
+
 app = Flask(__name__)
 
 # Set up logging
@@ -114,35 +127,20 @@ def generate_recommendations(user_profile):
     # Preprocess user input
     user_input = preprocess_user_input(user_profile)
 
-    # Define the exact features the model was trained on
-    property_features = [
-        'price', 'size_sq_ft', 'year', 'month', 'day_of_week',
-        'price_to_income_ratio', 'price_to_savings_ratio', 'affordability_score',
-        'has_garden', 'has_parking', 'location_Urban', 'location_Suburban', 'location_Rural',
-        'latitude', 'longitude', 'epc_rating_encoded',
-        'property_type_Detached', 'property_type_Semi_Detached', 'property_type_Terraced',
-        'property_type_Flat_Maisonette', 'property_type_Other',
-        'bedrooms', 'bathrooms', 'tenure', 'price_relative_to_county_avg'
-    ]
-
-    county_columns = [col for col in property_data.columns if col.startswith('county_')]
-    property_features.extend(county_columns)
-
     # Ensure all required features exist in property data
-    for feature in property_features:
+    for feature in PROPERTY_FEATURES:
         if feature not in property_data.columns:
             logger.warning(f"Feature '{feature}' not found in property data. Adding default column with 0s.")
             property_data[feature] = 0
 
-    # Add log transformations
-    property_data['log_price'] = np.log1p(property_data['price'])
-    property_data['log_size'] = np.log1p(property_data['size_sq_ft'])
-
-    # Add log_price and log_size to the features list
-    property_features.extend(['log_price', 'log_size'])
+        # Add log transformations if not present
+    if 'log_price' not in property_data.columns:
+        property_data['log_price'] = np.log1p(property_data['price'])
+    if 'log_size' not in property_data.columns:
+        property_data['log_size'] = np.log1p(property_data['size_sq_ft'])
 
     # Select features in the correct order
-    X_property = property_data[property_features]
+    X_property = property_data[PROPERTY_FEATURES]
 
     # Scale property features
     scaled_property_features = scaler_property.transform(X_property)

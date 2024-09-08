@@ -30,7 +30,7 @@ def main():
         plot_training_history(history)
 
         # Evaluate the model
-        accuracy, precision, recall, f1 = evaluate_model(model, [X_property_test, X_user_test], y_test)
+        accuracy, precision, recall, f1 = evaluate_model(model, [X_property_test, X_user_test], y_test, True, True, True)
 
         logging.info(f"Accuracy: {accuracy:.4f}")
         logging.info(f"Precision: {precision:.4f}")
