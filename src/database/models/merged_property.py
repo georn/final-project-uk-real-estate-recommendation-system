@@ -32,6 +32,7 @@ class MergedProperty(Base):
     listing_time = Column(String)
     latitude = Column(Float)
     longitude = Column(Float)
+    county = Column(String)
 
     def __repr__(self):
-        return f"<MergedProperty(id={self.id}, postal_code='{self.postal_code}', price={self.price})>"
+        return f"<MergedProperty(id={self.id}, postal_code='{self.postal_code}', price={self.price}, county='{self.county}')>"

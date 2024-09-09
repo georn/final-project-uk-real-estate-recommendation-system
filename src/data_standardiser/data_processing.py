@@ -10,6 +10,9 @@ def standardise_price(price):
     if not isinstance(price, str):
         return price
 
+    if price.lower() == 'price not available':
+        return None
+
     price = price.replace('£', '').replace(',', '').replace('€', '').strip()
 
     try:

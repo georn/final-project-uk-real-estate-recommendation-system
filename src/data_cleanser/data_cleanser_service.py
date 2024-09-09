@@ -2,44 +2,81 @@ import os
 
 import pandas as pd
 
-# Get the directory of the current script
-current_dir = os.path.dirname(os.path.abspath(__file__))
 
-# Construct the path to the data directory
-data_dir = os.path.abspath(os.path.join(current_dir, '..', '..', 'data', 'historical-data'))
+# Paths and File Handling
+def get_full_path(file_name):
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    data_dir = os.path.abspath(os.path.join(current_dir, '..', '..', 'data', 'historical-data'))
+    return os.path.join(data_dir, file_name)
 
-def cleanse_data(input_file, output_file):
-    # Define the headers based on the provided breakdown
-    headers = ["Unique Transaction Identifier", "Price", "Date of Transaction",
-               "Postal Code", "Property Type", "Old/New", "Duration",
-               "PAON", "SAON", "Street", "Locality", "Town/City",
-               "District", "County", "PPD Category Type", "Record Status"]
 
-    # Construct full paths for input and output files
-    input_path = os.path.join(data_dir, input_file)
-    output_path = os.path.join(data_dir, output_file)
-
+def load_data(input_file, headers):
+    input_path = get_full_path(input_file)
     print(f"Loading data from: {input_path}")
-    # Load the CSV file without headers
-    data = pd.read_csv(input_path, header=None, names=headers)
+    return pd.read_csv(input_path, header=None, names=headers)
 
-    # Convert Date of Transaction to datetime for filtering
-    print("Converting dates and filtering data...")
-    data['Date of Transaction'] = pd.to_datetime(data['Date of Transaction'])
 
-    # Filter for properties in Buckinghamshire and from the year 2023
-    filtered_data = data[(data['County'].str.upper() == 'BUCKINGHAMSHIRE') &
-                         (data['Date of Transaction'].dt.year == 2023)]
-
-    print(f"Number of records after filtering: {len(filtered_data)}")
-
+def save_data(data, output_file):
+    output_path = get_full_path(output_file)
     print(f"Saving cleaned data to: {output_path}")
-    # Save the cleaned data to a new CSV file
-    filtered_data.to_csv(output_path, index=False)
-    print("Data cleansing process completed successfully.")
+    data.to_csv(output_path, index=False)
+    print("Data saving completed successfully.")
+
+
+# Standardization
+def standardize_county(county):
+    county = county.upper()
+    if county.startswith('NORTH ') or county.startswith('WEST '):
+        return county.split(' ', 1)[1]
+    return county
+
+
+# Cleansing and Filtering Logic
+def filter_by_shires_and_year(data, target_shires, year):
+    print("Filtering data by shires and year...")
+    data['County'] = data['County'].apply(standardize_county)
+    filtered_data = data[
+        (data['County'].isin([standardize_county(shire) for shire in target_shires])) &
+        (data['Date of Transaction'].dt.year == year)
+        ]
+    return filtered_data
+
+
+# Date Handling
+def process_dates(data):
+    print("Converting dates...")
+    data['Date of Transaction'] = pd.to_datetime(data['Date of Transaction'])
+    return data
+
+
+# Main Cleansing Function
+def cleanse_data(input_file, output_file, target_shires):
+    headers = [
+        "Unique Transaction Identifier", "Price", "Date of Transaction",
+        "Postal Code", "Property Type", "Old/New", "Duration",
+        "PAON", "SAON", "Street", "Locality", "Town/City",
+        "District", "County", "PPD Category Type", "Record Status"
+    ]
+
+    data = load_data(input_file, headers)
+    data = process_dates(data)
+    filtered_data = filter_by_shires_and_year(data, target_shires, 2023)
+    print(f"Number of records after filtering: {len(filtered_data)}")
+    save_data(filtered_data, output_file)
+
+    # Print summary of records for each county
+    print("\nNumber of records per county:")
+    county_counts = filtered_data['County'].value_counts()
+    print(county_counts)
+
 
 if __name__ == "__main__":
-    input_csv = 'pp-monthly-update-new-version.csv'
-    output_csv = 'buckinghamshire_2023_cleaned_data.csv'
-    cleanse_data(input_csv, output_csv)
+    input_csv = 'pp-2023.csv'
+    output_csv = 'multi_county_2023_cleaned_data.csv'
+    target_shires = [
+        'Buckinghamshire', 'Bedford', 'Oxfordshire',
+        'North Northamptonshire', 'West Northamptonshire',
+        'Hertfordshire', 'West Berkshire'
+    ]
+    cleanse_data(input_csv, output_csv, target_shires)
     print("Data cleansing completed when run as main script.")
