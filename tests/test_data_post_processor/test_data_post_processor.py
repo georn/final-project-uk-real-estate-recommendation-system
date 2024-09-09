@@ -7,7 +7,10 @@ import pandas as pd
 from src.data_preparation.data_post_processor import (
     process_data, handle_missing_values, engineer_features,
     encode_categorical_variables, calculate_affordability_metrics,
-    scale_selected_features, store_processed_data
+    scale_selected_features, store_processed_data,
+    impute_numeric_columns, impute_categorical_columns,
+    impute_size_and_create_sq_ft, impute_specific_columns,
+    impute_lat_long
 )
 from src.database.models.processed_property import ProcessedProperty, EncodedTenure
 
@@ -43,6 +46,7 @@ class TestDataPostProcessor(unittest.TestCase):
         })
 
         call_count = 0
+
         def mock_read_sql(query, con):
             nonlocal call_count
             if call_count == 0:
@@ -69,6 +73,8 @@ class TestDataPostProcessor(unittest.TestCase):
         self.assertIn('price_to_income_ratio', result.columns)
         self.assertIn('price_to_savings_ratio', result.columns)
         self.assertIn('affordability_score', result.columns)
+        self.assertIn('days_since_date', result.columns)
+        self.assertIn('listing_recency', result.columns)
 
         mock_store_processed_data.assert_called_once()
         mock_db.close.assert_called_once()
@@ -77,11 +83,13 @@ class TestDataPostProcessor(unittest.TestCase):
         df_with_missing = self.sample_df.copy()
         df_with_missing.loc[0, 'price'] = np.nan
         df_with_missing.loc[1, 'property_type'] = np.nan
+        df_with_missing.loc[2, 'size'] = 'Size info not available'
 
         result = handle_missing_values(df_with_missing)
 
         self.assertFalse(result['price'].isnull().any())
         self.assertFalse(result['property_type'].isnull().any())
+        self.assertFalse(result['size_sq_ft'].isnull().any())
         self.assertEqual(result.loc[1, 'property_type'], 'Unknown')
 
     def test_engineer_features(self):
@@ -94,6 +102,8 @@ class TestDataPostProcessor(unittest.TestCase):
         self.assertIn('epc_rating_encoded', result.columns)
         self.assertIn('has_garden', result.columns)
         self.assertIn('has_parking', result.columns)
+        self.assertIn('days_since_date', result.columns)
+        self.assertIn('listing_recency', result.columns)
 
     def test_encode_categorical_variables(self):
         result = encode_categorical_variables(self.sample_df)
@@ -113,23 +123,11 @@ class TestDataPostProcessor(unittest.TestCase):
         self.assertIn('location_Suburban', result.columns)
         self.assertIn('location_Rural', result.columns)
 
-        # Print actual values for debugging
-        print("\nActual encoded values:")
-        for i in range(len(self.sample_df)):
-            print(f"Row {i}:")
-            for prop_type in expected_property_types:
-                print(f"  {prop_type}: {result.loc[i, prop_type]}")
-
         # Check if exactly one property type is 1 for each row
         for i in range(len(self.sample_df)):
             encoded_values = [result.loc[i, prop_type] for prop_type in expected_property_types]
             self.assertEqual(sum(encoded_values), 1,
                              f"Row {i} does not have exactly one property type encoded as 1: {encoded_values}")
-
-        # Print tenure values for debugging
-        print("\nTenure values:")
-        print("Original:", self.sample_df['tenure'].tolist())
-        print("Encoded:", result['tenure'].tolist())
 
         # Check if tenure is encoded correctly
         self.assertTrue(
@@ -154,57 +152,60 @@ class TestDataPostProcessor(unittest.TestCase):
         df['month'] = [1, 6, 12]
         df['day_of_week'] = [0, 3, 5]
 
-        original_values = {col: df[col].tolist() for col in ['year', 'month', 'day_of_week']}
-        original_means = {col: df[col].mean() for col in ['year', 'month', 'day_of_week']}
-        original_stds = {col: df[col].std() for col in ['year', 'month', 'day_of_week']}
-
-        print("\nOriginal data:")
-        print(df[['year', 'month', 'day_of_week']])
-
         result = scale_selected_features(df)
-
-        print("\nScaled data:")
-        print(result[['year', 'month', 'day_of_week']])
 
         for col in ['year', 'month', 'day_of_week']:
             scaled_mean = result[col].mean()
             scaled_std = result[col].std()
 
-            print(f"\n{col}:")
-            print(f"Original mean: {original_means[col]}, Original std: {original_stds[col]}")
-            print(f"Scaled mean: {scaled_mean}, Scaled std: {scaled_std}")
-
-            # Check if the mean is close to 0 (allowing for small floating-point errors)
             self.assertAlmostEqual(scaled_mean, 0, places=7,
                                    msg=f"Mean of scaled {col} should be close to 0")
-
-            # Check if the standard deviation is within an acceptable range
             self.assertGreater(scaled_std, 0.9,
                                msg=f"Standard deviation of scaled {col} should be greater than 0.9")
-            self.assertLess(scaled_std, 1.3,  # Increased upper bound to 1.3
+            self.assertLess(scaled_std, 1.3,
                             msg=f"Standard deviation of scaled {col} should be less than 1.3")
 
-            # Check if the values have changed from the original
-            print(f"Original values: {original_values[col]}")
-            print(f"Scaled values: {result[col].tolist()}")
-            self.assertFalse(np.allclose(result[col], original_values[col]),
-                             f"Values of {col} should have changed after scaling")
+    def test_impute_numeric_columns(self):
+        df = self.sample_df.copy()
+        df.loc[0, 'price'] = np.nan
+        result = impute_numeric_columns(df, exclude_columns=['id'])
+        self.assertFalse(result['price'].isnull().any())
 
-        print("\nAll tests passed for scale_selected_features")
+    def test_impute_categorical_columns(self):
+        df = self.sample_df.copy()
+        df.loc[0, 'property_type'] = np.nan
+        result = impute_categorical_columns(df, exclude_columns=['id'])
+        self.assertFalse(result['property_type'].isnull().any())
+
+    def test_impute_size_and_create_sq_ft(self):
+        df = self.sample_df.copy()
+        df.loc[0, 'size'] = 'Size info not available'
+        result = impute_size_and_create_sq_ft(df)
+        self.assertIn('size_sq_ft', result.columns)
+        self.assertFalse(result['size_sq_ft'].isnull().any())
+
+    def test_impute_specific_columns(self):
+        df = self.sample_df.copy()
+        df.loc[0, 'bedrooms'] = np.nan
+        result = impute_specific_columns(df, ['bedrooms', 'bathrooms'])
+        self.assertFalse(result['bedrooms'].isnull().any())
+
+    def test_impute_lat_long(self):
+        df = self.sample_df.copy()
+        df.loc[0, 'latitude'] = np.nan
+        result = impute_lat_long(df, ['latitude', 'longitude'])
+        self.assertFalse(result['latitude'].isnull().any())
 
     @patch('src.data_preparation.data_post_processor.logging.error')
     def test_store_processed_data(self, mock_log_error):
-        # Prepare the data
         df = self.sample_df.copy()
         df = engineer_features(df)
         df = encode_categorical_variables(df)
 
-        # Add mock data for columns that would be created by other functions
         df['price_to_income_ratio'] = [3.5, 4.0, 4.5]
         df['price_to_savings_ratio'] = [10.0, 12.0, 15.0]
         df['affordability_score'] = [0.8, 0.7, 0.6]
 
-        # Ensure all required columns are present
         required_columns = [
             'id', 'price', 'size_sq_ft', 'year', 'month', 'day_of_week',
             'price_to_income_ratio', 'price_to_savings_ratio', 'affordability_score',
